@@ -1,0 +1,40 @@
+[Tests]
+   [assembly.cell]
+    type = 'Exodiff'
+    input = 'assembly_reporting_id.i'
+    exodiff = 'assembly_reporting_id_cell_out.e'
+    cli_args = "Outputs/file_base='assembly_reporting_id_cell_out'"
+    requirement = 'The system shall generate pin reporting IDs for cartesian assembly with assign_type=cell (default)'
+    recover = false
+  []
+  [assembly.pattern]
+    type = 'Exodiff'
+    input = 'assembly_reporting_id.i'
+    exodiff = 'assembly_reporting_id_pattern_out.e'
+    cli_args = "Mesh/assembly/assign_type='pattern' Outputs/file_base='assembly_reporting_id_pattern_out'"
+    requirement = 'The system shall generate pin reporting IDs for cartesian assembly with assign_type=pattern'
+    recover = false
+  []
+  [assembly.manual]
+    type = 'Exodiff'
+    input = 'assembly_reporting_id.i'
+    exodiff = 'assembly_reporting_id_manual_out.e'
+    cli_args = "Mesh/assembly/assign_type='manual' Mesh/assembly/id_pattern='0 0 1 1;0 0 1 1;2 2 3 3;2 2 3 3' Outputs/file_base='assembly_reporting_id_manual_out'"
+    requirement = 'The system shall generate pin reporting IDs for cartesian assembly with assign_type=manual'
+    recover = false
+  []
+  [core.regular_boundary]
+    type = 'Exodiff'
+    input = 'core_reporting_id.i'
+    exodiff = 'core_reporting_id_out.e'
+    requirement = 'The system shall generate pin and assembly reporting IDs for cartesian core'
+    recover = false
+  []
+  [core.zigzag_boundary]
+    type = 'Exodiff'
+    input = 'core_zigzag_reporting_id.i'
+    exodiff = 'core_zigzag_reporting_id_out.e'
+    requirement = 'The system shall generate pin and assembly reporting IDs for cartesian core with zig-zag boundary'
+    recover = false
+  []
+[]
