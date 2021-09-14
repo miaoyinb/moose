@@ -1,0 +1,25 @@
+[Tests]
+  [pin_3d]
+    type = 'Exodiff'
+    input = 'plane_id_pin3d.i'
+    exodiff = 'plane_id_pin3d_out.e'
+    requirement = 'The system shall generate plane reporting IDs for 3d single pin'
+    recover = false
+  []
+  [cartesian_grid_2d_x_dir]
+    type = 'Exodiff'
+    input = 'plane_id_grid2d.i'
+    exodiff = 'plane_id_grid2d_x_dir_out.e'
+    cli_args = "Outputs/file_base='plane_id_grid2d_x_dir_out'"
+    requirement = 'The system shall generate plane reporting IDs for Cartesian 2D grid by taking x-axis as plane direction'
+    recover = false
+  []
+  [cartesian_grid_2d_y_dir]
+    type = 'Exodiff'
+    input = 'plane_id_grid2d.i'
+    exodiff = 'plane_id_grid2d_y_dir_out.e'
+    cli_args = "Mesh/plane_id_gen/plane_axis='y' Outputs/file_base='plane_id_grid2d_y_dir_out'"
+    requirement = 'The system shall generate plane reporting IDs for Cartesian 2D grid by taking y-axis as plane direction'
+    recover = false
+  []
+[]
