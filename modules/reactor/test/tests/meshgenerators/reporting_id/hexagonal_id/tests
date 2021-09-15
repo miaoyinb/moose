@@ -1,4 +1,6 @@
 [Tests]
+  design = 'meshgenerators/HexIDPatternedMeshGenerator.md'
+  issues = '#19217'
   [assembly.cell]
     type = 'Exodiff'
     input = 'assembly_reporting_id.i'

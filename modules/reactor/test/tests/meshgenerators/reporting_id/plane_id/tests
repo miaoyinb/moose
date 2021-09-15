@@ -1,5 +1,7 @@
 [Tests]
-  [pin_3d]
+  design = 'meshgenerators/PlaneIDMeshGenerator.md'
+  issues = '#19217'
+  [plane]
     type = 'Exodiff'
     input = 'plane_id_pin3d.i'
     exodiff = 'plane_id_pin3d_out.e'

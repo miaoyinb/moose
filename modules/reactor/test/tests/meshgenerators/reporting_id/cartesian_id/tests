@@ -1,5 +1,7 @@
 [Tests]
-   [assembly.cell]
+  design = 'meshgenerators/CartesianIDPatternedMeshGenerator.md'
+  issues = '#19217'
+  [assembly.cell]
     type = 'Exodiff'
     input = 'assembly_reporting_id.i'
     exodiff = 'assembly_reporting_id_cell_out.e'
