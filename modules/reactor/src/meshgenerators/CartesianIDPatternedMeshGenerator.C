@@ -8,7 +8,6 @@
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
 #include "CartesianIDPatternedMeshGenerator.h"
-#include "libmesh/elem.h"
 
 registerMooseObject("ReactorApp", CartesianIDPatternedMeshGenerator);
 
@@ -28,6 +27,7 @@ CartesianIDPatternedMeshGenerator::validParams()
                              "patterned Cartesian meshes with Reporting ID");
   return params;
 }
+
 CartesianIDPatternedMeshGenerator::CartesianIDPatternedMeshGenerator(
     const InputParameters & parameters)
   : PatternedMeshGenerator(parameters),
@@ -70,11 +70,11 @@ CartesianIDPatternedMeshGenerator::generate()
   // assumes that the entire mesh has elements of each individual mesh sequentially ordered.
   std::vector<dof_id_type> integer_ids;
   if (_assign_type == "cell")
-    integer_ids = getCellwiseIntegerIDs();
+    integer_ids = getCellwiseIntegerIDs(_meshes, _pattern, _use_exclude_id, _exclude_ids);
   else if (_assign_type == "pattern")
-    integer_ids = getPatternIntegerIDs();
+    integer_ids = getPatternIntegerIDs(_meshes, _pattern);
   else if (_assign_type == "manual")
-    integer_ids = getManualIntegerIDs();
+    integer_ids = getManualIntegerIDs(_meshes, _pattern, _id_pattern);
 
   unsigned int extra_id_index = 0;
   if (!mesh->has_elem_integer(_element_id_name))
@@ -85,70 +85,4 @@ CartesianIDPatternedMeshGenerator::generate()
   for (auto & elem : mesh->element_ptr_range())
     elem->set_extra_integer(extra_id_index, integer_ids[i++]);
   return mesh;
-}
-
-std::vector<dof_id_type>
-CartesianIDPatternedMeshGenerator::getCellwiseIntegerIDs() const
-{
-  std::vector<dof_id_type> integer_ids;
-  dof_id_type id = 0;
-  for (MooseIndex(_pattern) i = 0; i < _pattern.size(); ++i)
-  {
-    for (MooseIndex(_pattern[i]) j = 0; j < _pattern[i].size(); ++j)
-    {
-      const ReplicatedMesh & cell_mesh = *_meshes[_pattern[i][j]];
-      unsigned int n_cell_elem = cell_mesh.n_elem();
-      bool exclude_id = false;
-      if (_use_exclude_id)
-        if (_exclude_ids[_pattern[i][j]])
-          exclude_id = true;
-      if (!exclude_id)
-      {
-        for (unsigned int k = 0; k < n_cell_elem; ++k)
-          integer_ids.push_back(id);
-        ++id;
-      }
-      else
-      {
-        for (unsigned int k = 0; k < n_cell_elem; ++k)
-          integer_ids.push_back(DofObject::invalid_id);
-      }
-    }
-  }
-  return integer_ids;
-}
-
-std::vector<dof_id_type>
-CartesianIDPatternedMeshGenerator::getPatternIntegerIDs() const
-{
-  std::vector<dof_id_type> integer_ids;
-  for (MooseIndex(_pattern) i = 0; i < _pattern.size(); ++i)
-  {
-    for (MooseIndex(_pattern[i]) j = 0; j < _pattern[i].size(); ++j)
-    {
-      const ReplicatedMesh & cell_mesh = *_meshes[_pattern[i][j]];
-      unsigned int n_cell_elem = cell_mesh.n_elem();
-      for (unsigned int k = 0; k < n_cell_elem; ++k)
-        integer_ids.push_back(_pattern[i][j]);
-    }
-  }
-  return integer_ids;
-}
-
-std::vector<dof_id_type>
-CartesianIDPatternedMeshGenerator::getManualIntegerIDs() const
-{
-  std::vector<dof_id_type> integer_ids;
-  for (MooseIndex(_pattern) i = 0; i < _pattern.size(); ++i)
-  {
-    for (MooseIndex(_pattern[i]) j = 0; j < _pattern[i].size(); ++j)
-    {
-      dof_id_type id = _id_pattern[i][j];
-      const ReplicatedMesh & cell_mesh = *_meshes[_pattern[i][j]];
-      unsigned int n_cell_elem = cell_mesh.n_elem();
-      for (unsigned int k = 0; k < n_cell_elem; ++k)
-        integer_ids.push_back(id);
-    }
-  }
-  return integer_ids;
 }
