@@ -12,7 +12,7 @@
 
 #include "libmesh/elem.h"
 
-registerMooseObject("ReactorApp", PlaneIDMeshGenerator);
+registerMooseObject("MooseApp", PlaneIDMeshGenerator);
 
 InputParameters
 PlaneIDMeshGenerator::validParams()
