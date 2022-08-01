@@ -24,6 +24,8 @@ public:
 
   std::unique_ptr<MeshBase> generate() override;
 
+  void Hex8toPrism6(MeshBase & mesh);
+
 protected:
   /// mesh to modify
   std::unique_ptr<MeshBase> & _input;
