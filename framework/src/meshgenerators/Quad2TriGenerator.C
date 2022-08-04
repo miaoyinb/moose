@@ -46,107 +46,155 @@ Quad2TriGenerator::generate()
 void
 Quad2TriGenerator::Hex8toPrism6(MeshBase & mesh)
 {
+  libmesh_assert(mesh.is_prepared() || mesh.is_replicated());
+
+  // The number of elements in the original mesh before any additions
+  // or deletions.
   const dof_id_type n_orig_elem = mesh.n_elem();
   const dof_id_type max_orig_id = mesh.max_elem_id();
 
-  std::vector<Elem *> new_elements;
-  unsigned int max_subelems = 2;
+  // We store pointers to the newly created elements in a vector
+  // until they are ready to be added to the mesh.  This is because
+  // adding new elements on the fly can cause reallocation and invalidation
+  // of existing mesh element_iterators.
+  std::vector<std::unique_ptr<Elem>> new_elements;
+
+  unsigned int max_subelems = 1;  // in 1D nothing needs to change
+  if (mesh.mesh_dimension() == 2) // in 2D quads can split into 2 tris
+    max_subelems = 2;
+  if (mesh.mesh_dimension() == 3) // in 3D hexes can split into 6 tets
+    max_subelems = 6;
+
   new_elements.reserve(max_subelems * n_orig_elem);
 
+  // If the original mesh has *side* boundary data, we carry that over
+  // to the new mesh with triangular elements.  We currently only
+  // support bringing over side-based BCs to the all-tri mesh, but
+  // that could probably be extended to node and edge-based BCs as
+  // well.
   const bool mesh_has_boundary_data = (mesh.get_boundary_info().n_boundary_conds() > 0);
 
+  // Temporary vectors to store the new boundary element pointers, side numbers, and boundary ids
   std::vector<Elem *> new_bndry_elements;
   std::vector<unsigned short int> new_bndry_sides;
   std::vector<boundary_id_type> new_bndry_ids;
 
+  // We may need to add new points if we run into a 1.5th order
+  // element; if we do that on a DistributedMesh in a ghost element then
+  // we will need to fix their ids / unique_ids
   bool added_new_ghost_point = false;
 
-  for (auto & elem : mesh.element_ptr_range())
+  // Iterate over the elements, splitting:
+  // QUADs into pairs of conforming triangles
+  // PYRAMIDs into pairs of conforming tets,
+  // PRISMs into triplets of conforming tets, and
+  // HEXs into quintets or sextets of conforming tets.
+  // We split on the shortest diagonal to give us better
+  // triangle quality in 2D, and we split based on node ids
+  // to guarantee consistency in 3D.
+
+  // FIXME: This algorithm does not work on refined grids!
   {
-    const ElemType etype = elem->type();
-    Elem * subelem[2];
+#ifdef LIBMESH_ENABLE_UNIQUE_ID
+    unique_id_type max_unique_id = mesh.parallel_max_unique_id();
+#endif
 
-    for (unsigned int i = 0; i != max_subelems; ++i)
-      subelem[i] = nullptr;
+    std::unique_ptr<const Elem> elem_side, subside_elem;
 
-    if (etype == HEX8)
+    for (auto & elem : mesh.element_ptr_range())
     {
-      subelem[0] = new Prism6;
-      subelem[1] = new Prism6;
-      if ((elem->point(0) - elem->point(2)).norm() < (elem->point(1) - elem->point(3)).norm())
+      const ElemType etype = elem->type();
+      std::array<std::unique_ptr<Elem>, 6> subelem {};
+
+      if (etype == HEX8)
       {
+        subelem[0] = Elem::build(PRISM6);
+        subelem[1] = Elem::build(PRISM6);
+        if ((elem->point(0) - elem->point(2)).norm() < (elem->point(1) - elem->point(3)).norm())
+        {
+          subelem[0]->set_node(0) = elem->node_ptr(0);
+          subelem[0]->set_node(1) = elem->node_ptr(1);
+          subelem[0]->set_node(2) = elem->node_ptr(2);
+          subelem[0]->set_node(3) = elem->node_ptr(4);
+          subelem[0]->set_node(4) = elem->node_ptr(5);
+          subelem[0]->set_node(5) = elem->node_ptr(6);
+
+          subelem[1]->set_node(0) = elem->node_ptr(0);
+          subelem[1]->set_node(1) = elem->node_ptr(2);
+          subelem[1]->set_node(2) = elem->node_ptr(3);
+          subelem[1]->set_node(3) = elem->node_ptr(4);
+          subelem[1]->set_node(4) = elem->node_ptr(6);
+          subelem[1]->set_node(5) = elem->node_ptr(7);
+        }
+
+        else
+        {
+          subelem[0]->set_node(0) = elem->node_ptr(0);
+          subelem[0]->set_node(1) = elem->node_ptr(1);
+          subelem[0]->set_node(2) = elem->node_ptr(3);
+          subelem[0]->set_node(3) = elem->node_ptr(4);
+          subelem[0]->set_node(4) = elem->node_ptr(5);
+          subelem[0]->set_node(5) = elem->node_ptr(7);
+
+          subelem[1]->set_node(0) = elem->node_ptr(1);
+          subelem[1]->set_node(1) = elem->node_ptr(2);
+          subelem[1]->set_node(2) = elem->node_ptr(3);
+          subelem[1]->set_node(3) = elem->node_ptr(5);
+          subelem[1]->set_node(4) = elem->node_ptr(6);
+          subelem[1]->set_node(5) = elem->node_ptr(7);
+        }
+      }
+      else if (etype == PRISM6)
+      {
+        subelem[0] = Elem::build(PRISM6);
         subelem[0]->set_node(0) = elem->node_ptr(0);
         subelem[0]->set_node(1) = elem->node_ptr(1);
         subelem[0]->set_node(2) = elem->node_ptr(2);
-        subelem[0]->set_node(3) = elem->node_ptr(4);
-        subelem[0]->set_node(4) = elem->node_ptr(5);
-        subelem[0]->set_node(5) = elem->node_ptr(6);
-
-        subelem[1]->set_node(0) = elem->node_ptr(0);
-        subelem[1]->set_node(1) = elem->node_ptr(2);
-        subelem[1]->set_node(2) = elem->node_ptr(3);
-        subelem[1]->set_node(3) = elem->node_ptr(4);
-        subelem[1]->set_node(4) = elem->node_ptr(6);
-        subelem[1]->set_node(5) = elem->node_ptr(7);
+        subelem[0]->set_node(3) = elem->node_ptr(3);
+        subelem[0]->set_node(4) = elem->node_ptr(4);
+        subelem[0]->set_node(5) = elem->node_ptr(5);
       }
-
-      else
-      {
-        subelem[0]->set_node(0) = elem->node_ptr(0);
-        subelem[0]->set_node(1) = elem->node_ptr(1);
-        subelem[0]->set_node(2) = elem->node_ptr(3);
-        subelem[0]->set_node(3) = elem->node_ptr(4);
-        subelem[0]->set_node(4) = elem->node_ptr(5);
-        subelem[0]->set_node(5) = elem->node_ptr(7);
-
-        subelem[1]->set_node(0) = elem->node_ptr(1);
-        subelem[1]->set_node(1) = elem->node_ptr(2);
-        subelem[1]->set_node(2) = elem->node_ptr(3);
-        subelem[1]->set_node(3) = elem->node_ptr(5);
-        subelem[1]->set_node(4) = elem->node_ptr(6);
-        subelem[1]->set_node(5) = elem->node_ptr(7);
-      }
-    }
-    else if (etype == PRISM6)
-    {
-      subelem[0] = new Prism6;
-      subelem[0]->set_node(0) = elem->node_ptr(0);
-      subelem[0]->set_node(1) = elem->node_ptr(1);
-      subelem[0]->set_node(2) = elem->node_ptr(2);
-      subelem[0]->set_node(3) = elem->node_ptr(3);
-      subelem[0]->set_node(4) = elem->node_ptr(4);
-      subelem[0]->set_node(5) = elem->node_ptr(5);
-    }
-    // Be sure the correct IDs are also set for all subelems.
-    for (unsigned int i = 0; i != max_subelems; ++i)
-      if (subelem[i])
-      {
-        subelem[i]->processor_id() = elem->processor_id();
-        subelem[i]->subdomain_id() = elem->subdomain_id();
-      }
-
-    // On a mesh with boundary data, we need to move that data to
-    // the new elements.
-
-    // On a mesh which is distributed, we need to move
-    // remote_elem links to the new elements.
-    bool mesh_is_serial = mesh.is_serial();
-
-    if (mesh_has_boundary_data || mesh_is_serial)
-    {
-      // Container to key boundary IDs handed back by the BoundaryInfo object.
-      std::vector<boundary_id_type> bc_ids;
-
-      for (auto sn : elem->side_index_range())
-      {
-        mesh.get_boundary_info().boundary_ids(elem, sn, bc_ids);
-        for (const auto & b_id : bc_ids)
+      // Be sure the correct data is set for all subelems.
+      const unsigned int nei = elem->n_extra_integers();
+      for (unsigned int i = 0; i != max_subelems; ++i)
+        if (subelem[i])
         {
-          if (mesh_is_serial && b_id == BoundaryInfo::invalid_id)
+          subelem[i]->processor_id() = elem->processor_id();
+          subelem[i]->subdomain_id() = elem->subdomain_id();
+
+          // Copy any extra element data.  Since the subelements
+          // haven't been added to the mesh yet any allocation has
+          // to be done manually.
+          subelem[i]->add_extra_integers(nei);
+          for (unsigned int ei = 0; ei != nei; ++ei)
+            subelem[ei]->set_extra_integer(ei, elem->get_extra_integer(ei));
+
+          // Copy any mapping data.
+          subelem[i]->set_mapping_type(elem->mapping_type());
+          subelem[i]->set_mapping_data(elem->mapping_data());
+        }
+
+      // On a mesh with boundary data, we need to move that data to
+      // the new elements.
+
+      // On a mesh which is distributed, we need to move
+      // remote_elem links to the new elements.
+      bool mesh_is_serial = mesh.is_serial();
+
+      if (mesh_has_boundary_data || !mesh_is_serial)
+      {
+        // Container to key boundary IDs handed back by the BoundaryInfo object.
+        std::vector<boundary_id_type> bc_ids;
+
+        for (auto sn : elem->side_index_range())
+        {
+          mesh.get_boundary_info().boundary_ids(elem, sn, bc_ids);
+
+          if (bc_ids.empty() && elem->neighbor_ptr(sn) != remote_elem)
             continue;
 
           // Make a sorted list of node ids for elem->side(sn)
-          std::unique_ptr<Elem> elem_side = elem->build_side_ptr(sn);
+          elem->build_side_ptr(elem_side, sn);
           std::vector<dof_id_type> elem_side_nodes(elem_side->n_nodes());
           for (unsigned int esn = 0, n_esn = cast_int<unsigned int>(elem_side_nodes.size());
                esn != n_esn;
@@ -159,7 +207,7 @@ Quad2TriGenerator::Hex8toPrism6(MeshBase & mesh)
             {
               for (auto subside : subelem[i]->side_index_range())
               {
-                std::unique_ptr<Elem> subside_elem = subelem[i]->build_side_ptr(subside);
+                subelem[i]->build_side_ptr(subside_elem, subside);
 
                 // Make a list of *vertex* node ids for this subside, see if they are all present
                 // in elem->side(sn).  Note 1: we can't just compare elem->key(sn) to
@@ -181,12 +229,13 @@ Quad2TriGenerator::Hex8toPrism6(MeshBase & mesh)
                                   subside_nodes.begin(),
                                   subside_nodes.end()))
                 {
-                  if (b_id != BoundaryInfo::invalid_id)
-                  {
-                    new_bndry_ids.push_back(b_id);
-                    new_bndry_elements.push_back(subelem[i]);
-                    new_bndry_sides.push_back(subside);
-                  }
+                  for (const auto & b_id : bc_ids)
+                    if (b_id != BoundaryInfo::invalid_id)
+                    {
+                      new_bndry_ids.push_back(b_id);
+                      new_bndry_elements.push_back(subelem[i].get());
+                      new_bndry_sides.push_back(subside);
+                    }
 
                   // If the original element had a RemoteElem neighbor on side 'sn',
                   // then the subelem has one on side 'subside'.
@@ -194,44 +243,44 @@ Quad2TriGenerator::Hex8toPrism6(MeshBase & mesh)
                     subelem[i]->set_neighbor(subside, const_cast<RemoteElem *>(remote_elem));
                 }
               }
-            }
-        } // end for loop over boundary IDs
-      }   // end for loop over sides
+            } // end for loop over subelem
+        }     // end for loop over sides
 
-      // Remove the original element from the BoundaryInfo structure.
-      mesh.get_boundary_info().remove(elem);
+        // Remove the original element from the BoundaryInfo structure.
+        mesh.get_boundary_info().remove(elem);
 
-    } // end if (mesh_has_boundary_data)
+      } // end if (mesh_has_boundary_data)
 
-    // Determine new IDs for the split elements which will be
-    // the same on all processors, therefore keeping the Mesh
-    // in sync.  Note: we offset the new IDs by max_orig_id to
-    // avoid overwriting any of the original IDs.
-    for (unsigned int i = 0; i != max_subelems; ++i)
-      if (subelem[i])
-      {
-        // Determine new IDs for the split elements which will be
-        // the same on all processors, therefore keeping the Mesh
-        // in sync.  Note: we offset the new IDs by the max of the
-        // pre-existing ids to avoid conflicting with originals.
-        subelem[i]->set_id(max_orig_id + 6 * elem->id() + i);
+      // Determine new IDs for the split elements which will be
+      // the same on all processors, therefore keeping the Mesh
+      // in sync.  Note: we offset the new IDs by max_orig_id to
+      // avoid overwriting any of the original IDs.
+      for (unsigned int i = 0; i != max_subelems; ++i)
+        if (subelem[i])
+        {
+          // Determine new IDs for the split elements which will be
+          // the same on all processors, therefore keeping the Mesh
+          // in sync.  Note: we offset the new IDs by the max of the
+          // pre-existing ids to avoid conflicting with originals.
+          subelem[i]->set_id(max_orig_id + 6 * elem->id() + i);
 
-        // Prepare to add the newly-created simplices
-        new_elements.push_back(subelem[i]);
-      }
+#ifdef LIBMESH_ENABLE_UNIQUE_ID
+          subelem[i]->set_unique_id(max_unique_id + max_subelems * elem->unique_id() + i);
+#endif
 
-    // Delete the original element
-    mesh.delete_elem(elem);
-  } // End for loop over elements
+          // Prepare to add the newly-created simplices
+          new_elements.push_back(std::move(subelem[i]));
+        }
+
+      // Delete the original element
+      mesh.delete_elem(elem);
+    } // End for loop over elements
+  }
 
   // Now, iterate over the new elements vector, and add them each to
   // the Mesh.
-  {
-    std::vector<Elem *>::iterator el = new_elements.begin();
-    const std::vector<Elem *>::iterator end = new_elements.end();
-    for (; el != end; ++el)
-      mesh.add_elem(*el);
-  }
+  for (auto & elem : new_elements)
+    mesh.add_elem(std::move(elem));
 
   if (mesh_has_boundary_data)
   {
@@ -257,7 +306,7 @@ Quad2TriGenerator::Hex8toPrism6(MeshBase & mesh)
     libmesh_assert_equal_to(new_bndry_sides.size(), new_bndry_ids.size());
 
     // Add the new boundary info to the mesh
-    for (std::size_t s = 0; s < new_bndry_elements.size(); ++s)
+    for (auto s : index_range(new_bndry_elements))
       mesh.get_boundary_info().add_side(
           new_bndry_elements[s], new_bndry_sides[s], new_bndry_ids[s]);
   }
@@ -275,7 +324,7 @@ Quad2TriGenerator::Hex8toPrism6(MeshBase & mesh)
   }
 
   // Prepare the newly created mesh for use.
-  mesh.prepare_for_use(/*skip_renumber =*/false);
+  mesh.prepare_for_use();
 
   // Let the new_elements and new_bndry_elements vectors go out of scope.
 }
