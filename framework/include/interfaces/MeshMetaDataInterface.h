@@ -59,6 +59,22 @@ protected:
    */
   bool hasMeshProperty(const std::string & data_name, const std::string & prefix) const;
 
+  /**
+   *
+   */
+  bool hasMeshMetaDataAliasSet();
+  /**
+   *
+   */
+  void AddMeshMetaDataAlias(std::string original_prefix,
+                            std::string original_name,
+                            std::string new_prefix,
+                            std::string new_name);
+
+  std::vector<std::string> findMeshMetaData(std::string prefix) const;
+
+  std::string FindMeshMetaDataAlias(std::string full_new_name) const;
+
 private:
   /// Helper function for actually registering the restartable data.
   RestartableDataValue & registerMetaDataOnApp(const std::string & name,
@@ -74,14 +90,14 @@ MeshMetaDataInterface::getMeshProperty(const std::string & data_name, const std:
 
 {
   std::string full_name = std::string(SYSTEM) + "/" + prefix + "/" + data_name;
-  auto data_ptr = std::make_unique<RestartableData<T>>(full_name, nullptr);
+  auto data_ptr = std::make_unique<RestartableData<T>>(FindMeshMetaDataAlias(full_name), nullptr);
 
   // Here we will create the RestartableData even though we may not use this instance.
   // If it's already in use, the App will return a reference to the existing instance and we'll
   // return that one instead. We might refactor this to have the app create the RestartableData
   // at a later date.
-  auto & restartable_data_ref =
-      static_cast<RestartableData<T> &>(registerMetaDataOnApp(full_name, std::move(data_ptr)));
+  auto & restartable_data_ref = static_cast<RestartableData<T> &>(
+      registerMetaDataOnApp(FindMeshMetaDataAlias(full_name), std::move(data_ptr)));
 
   return restartable_data_ref.get();
 }

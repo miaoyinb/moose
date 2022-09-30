@@ -20,6 +20,11 @@ MeshGenerator::validParams()
                         false,
                         "Whether or not to show mesh info after generating the mesh "
                         "(bounding box, element types, sidesets, nodesets, subdomains, etc)");
+  params.addParam<std::vector<std::string>>("mesh_metadata_names",
+                                            std::vector<std::string>(),
+                                            "Names of mesh metadata that need to be passed.");
+  params.addParam<bool>(
+      "pass_input_metadata", false, "Whether to pass all the mesh metadata of the input mesh.");
 
   params.registerBase("MeshGenerator");
 
@@ -27,8 +32,24 @@ MeshGenerator::validParams()
 }
 
 MeshGenerator::MeshGenerator(const InputParameters & parameters)
-  : MooseObject(parameters), MeshMetaDataInterface(this), _mesh(_app.actionWarehouse().mesh())
+  : MooseObject(parameters),
+    MeshMetaDataInterface(this),
+    _mesh(_app.actionWarehouse().mesh()),
+    _mesh_metadata_names(getParam<std::vector<std::string>>("mesh_metadata_names")),
+    _pass_input_metadata(getParam<bool>("pass_input_metadata"))
 {
+  if (isParamValid("input"))
+  {
+    if (_pass_input_metadata)
+    {
+      const auto mesh_metadata_names = findMeshMetaData(getParam<MeshGeneratorName>("input"));
+      for (const auto & mmd_name : mesh_metadata_names)
+        AddMeshMetaDataAlias(getParam<MeshGeneratorName>("input"), mmd_name, name(), mmd_name);
+    }
+    else
+      for (const auto & mmd_name : _mesh_metadata_names)
+        AddMeshMetaDataAlias(getParam<MeshGeneratorName>("input"), mmd_name, name(), mmd_name);
+  }
 }
 
 std::unique_ptr<MeshBase> &
