@@ -111,11 +111,11 @@ protected:
   /// References to the mesh and displaced mesh (currently in the ActionWarehouse)
   std::shared_ptr<MooseMesh> & _mesh;
 
-  ///
-  const std::vector<std::string> _mesh_metadata_names;
+  /// List of selected mesh metadata from the input mesh that need to be retained
+  const std::vector<std::string> _selected_mesh_metadata_to_retain;
 
-  ///
-  const bool _pass_input_metadata;
+  /// Whether to retain all the mesh metadata from the input mesh
+  const bool _retain_all_input_mesh_metadata;
 
   /**
    * Build a \p MeshBase object whose underlying type will be determined by the Mesh input file

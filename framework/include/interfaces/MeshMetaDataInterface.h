@@ -63,16 +63,34 @@ protected:
    *
    */
   bool hasMeshMetaDataAliasSet();
+
   /**
-   *
+   * Add an alias of a mesh metadata
+   * @param original_prefix the original prefix (mesh generator name) of the mesh whose metadata
+   * needs an alias
+   * @param original_name the original mesh metadata name that needs an alias
+   * @param new_prefix the new prefix (mesh generator name) of the mesh metadata alias
+   * @param new_name the new mesh metadata name of the mesh metadata alias
    */
   void AddMeshMetaDataAlias(std::string original_prefix,
                             std::string original_name,
                             std::string new_prefix,
                             std::string new_name);
 
+  /**
+   * Collects the names of all the mesh metadata for a given mesh generator
+   * @param prefix the mesh generator name whose all metadata names need to be listed
+   * @return a list of all the mesh metadata names of the given mesh generator
+   */
   std::vector<std::string> findMeshMetaData(std::string prefix) const;
 
+  /**
+   * Finds the original full name of a mesh metadata no matter whether it is an alias or not
+   * @param full_new_name the full name of the mesh metadata whose original name needs to be
+   * obtained
+   * @return the original full name of an alias mesh metadata or the full name of an non-alias mesh
+   * metadata (identical to the input parameter)
+   */
   std::string FindMeshMetaDataAlias(std::string full_new_name) const;
 
 private:

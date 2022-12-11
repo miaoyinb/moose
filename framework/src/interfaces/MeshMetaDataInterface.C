@@ -49,10 +49,13 @@ MeshMetaDataInterface::AddMeshMetaDataAlias(std::string original_prefix,
                                             std::string new_prefix,
                                             std::string new_name)
 {
+  // The alias information is saved as a RestartableData with the following name
   const std::string full_name = std::string(SYSTEM) + "/MeshMetaDataAliasSystem";
   const std::string full_original_name =
       std::string(SYSTEM) + "/" + original_prefix + "/" + original_name;
   const std::string full_new_name = std::string(SYSTEM) + "/" + new_prefix + "/" + new_name;
+
+  // Create the mesh metadata alias system if it does not exist yet
   if (!_meta_data_app.hasRestartableMetaData(full_name, MooseApp::MESH_META_DATA))
   {
     auto data_ptr = std::make_unique<RestartableData<std::unordered_map<std::string, std::string>>>(
@@ -61,9 +64,12 @@ MeshMetaDataInterface::AddMeshMetaDataAlias(std::string original_prefix,
         static_cast<RestartableData<std::unordered_map<std::string, std::string>> &>(
             _meta_data_app.registerRestartableData(
                 full_name, std::move(data_ptr), 0, false, MooseApp::MESH_META_DATA));
+    // Add the alias information to the just-created alias system
+    // Note that if the original name itself is an alias, we need to track back to the real origin
     meta_data_alias_ref.set().emplace(
         std::make_pair(full_new_name, FindMeshMetaDataAlias(full_original_name)));
   }
+  // Just add a new line of alias information if the mesh metadata alias system already exists
   else
   {
     const RestartableDataMap & meta_data =
@@ -99,6 +105,8 @@ std::string
 MeshMetaDataInterface::FindMeshMetaDataAlias(std::string full_new_name) const
 {
   const std::string full_name = std::string(SYSTEM) + "/MeshMetaDataAliasSystem";
+  // If the mesh metadata alias system has not yet been created, no metadata has an alias. Just
+  // return the input name
   if (!_meta_data_app.hasRestartableMetaData(full_name, MooseApp::MESH_META_DATA))
     return full_new_name;
   const RestartableDataMap & meta_data =
@@ -110,6 +118,8 @@ MeshMetaDataInterface::FindMeshMetaDataAlias(std::string full_new_name) const
   auto & meta_data_alias_ref = meta_data_alias_ref_tmp.get();
 
   auto map_it = meta_data_alias_ref.find(full_new_name);
+  // return the input name if it is not registered in the alias system, otherwise return the
+  // original name
   if (map_it == meta_data_alias_ref.end())
     return full_new_name;
   else

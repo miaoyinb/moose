@@ -20,11 +20,13 @@ MeshGenerator::validParams()
                         false,
                         "Whether or not to show mesh info after generating the mesh "
                         "(bounding box, element types, sidesets, nodesets, subdomains, etc)");
-  params.addParam<std::vector<std::string>>("mesh_metadata_names",
-                                            std::vector<std::string>(),
-                                            "Names of mesh metadata that need to be passed.");
-  params.addParam<bool>(
-      "pass_input_metadata", false, "Whether to pass all the mesh metadata of the input mesh.");
+  params.addParam<std::vector<std::string>>(
+      "selected_mesh_metadata_to_retain",
+      std::vector<std::string>(),
+      "Names of input mesh's metadata that are selected to retain.");
+  params.addParam<bool>("retain_all_input_mesh_metadata",
+                        false,
+                        "Whether to retain all the mesh metadata of the input mesh.");
 
   params.registerBase("MeshGenerator");
 
@@ -35,20 +37,40 @@ MeshGenerator::MeshGenerator(const InputParameters & parameters)
   : MooseObject(parameters),
     MeshMetaDataInterface(this),
     _mesh(_app.actionWarehouse().mesh()),
-    _mesh_metadata_names(getParam<std::vector<std::string>>("mesh_metadata_names")),
-    _pass_input_metadata(getParam<bool>("pass_input_metadata"))
+    _selected_mesh_metadata_to_retain(
+        getParam<std::vector<std::string>>("selected_mesh_metadata_to_retain")),
+    _retain_all_input_mesh_metadata(getParam<bool>("retain_all_input_mesh_metadata"))
 {
   if (isParamValid("input"))
   {
-    if (_pass_input_metadata)
+    const MeshGeneratorName input_name(getParam<MeshGeneratorName>("input"));
+    if (_retain_all_input_mesh_metadata)
     {
-      const auto mesh_metadata_names = findMeshMetaData(getParam<MeshGeneratorName>("input"));
+      if (!_selected_mesh_metadata_to_retain.empty())
+        paramError(
+            "selected_mesh_metadata_to_retain",
+            "This parameter should not be provided if retain_all_input_mesh_metadata is set true.");
+      const auto mesh_metadata_names = findMeshMetaData(input_name);
       for (const auto & mmd_name : mesh_metadata_names)
-        AddMeshMetaDataAlias(getParam<MeshGeneratorName>("input"), mmd_name, name(), mmd_name);
+        AddMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
     }
     else
-      for (const auto & mmd_name : _mesh_metadata_names)
-        AddMeshMetaDataAlias(getParam<MeshGeneratorName>("input"), mmd_name, name(), mmd_name);
+      for (const auto & mmd_name : _selected_mesh_metadata_to_retain)
+      {
+        if (!hasMeshProperty(mmd_name, input_name))
+          paramError("selected_mesh_metadata_to_retain",
+                     "The specified mesh metadata to retain does not exist in the input mesh.");
+        AddMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
+      }
+  }
+  else
+  {
+    if (_retain_all_input_mesh_metadata)
+      paramError("retain_all_input_mesh_metadata",
+                 "In the absense of an input mesh, this parameter must not be true.");
+    if (!_selected_mesh_metadata_to_retain.empty())
+      paramError("selected_mesh_metadata_to_retain",
+                 "In the absence of an input mesh, this parameter must be empty.");
   }
 }
 
