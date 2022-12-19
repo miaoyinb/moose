@@ -28,6 +28,9 @@ MeshGenerator::validParams()
                         false,
                         "Whether to retain all the mesh metadata of the input mesh.");
 
+  params.addParamNamesToGroup(
+      "selected_mesh_metadata_to_retain retain_all_input_mesh_metadata", "Mesh Metadata Retainment");
+
   params.registerBase("MeshGenerator");
 
   return params;
@@ -52,7 +55,7 @@ MeshGenerator::MeshGenerator(const InputParameters & parameters)
             "This parameter should not be provided if retain_all_input_mesh_metadata is set true.");
       const auto mesh_metadata_names = findMeshMetaData(input_name);
       for (const auto & mmd_name : mesh_metadata_names)
-        AddMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
+        addMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
     }
     else
       for (const auto & mmd_name : _selected_mesh_metadata_to_retain)
@@ -60,14 +63,14 @@ MeshGenerator::MeshGenerator(const InputParameters & parameters)
         if (!hasMeshProperty(mmd_name, input_name))
           paramError("selected_mesh_metadata_to_retain",
                      "The specified mesh metadata to retain does not exist in the input mesh.");
-        AddMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
+        addMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
       }
   }
   else
   {
     if (_retain_all_input_mesh_metadata)
       paramError("retain_all_input_mesh_metadata",
-                 "In the absense of an input mesh, this parameter must not be true.");
+                 "In the absence of an input mesh, this parameter must not be true.");
     if (!_selected_mesh_metadata_to_retain.empty())
       paramError("selected_mesh_metadata_to_retain",
                  "In the absence of an input mesh, this parameter must be empty.");

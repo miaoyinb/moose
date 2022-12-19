@@ -44,7 +44,7 @@ MeshMetaDataInterface::hasMeshMetaDataAliasSet()
 }
 
 void
-MeshMetaDataInterface::AddMeshMetaDataAlias(std::string original_prefix,
+MeshMetaDataInterface::addMeshMetaDataAlias(std::string original_prefix,
                                             std::string original_name,
                                             std::string new_prefix,
                                             std::string new_name)

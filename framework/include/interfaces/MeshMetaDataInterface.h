@@ -72,7 +72,7 @@ protected:
    * @param new_prefix the new prefix (mesh generator name) of the mesh metadata alias
    * @param new_name the new mesh metadata name of the mesh metadata alias
    */
-  void AddMeshMetaDataAlias(std::string original_prefix,
+  void addMeshMetaDataAlias(std::string original_prefix,
                             std::string original_name,
                             std::string new_prefix,
                             std::string new_name);
