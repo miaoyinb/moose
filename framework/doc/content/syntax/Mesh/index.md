@@ -198,3 +198,5 @@ Mesh meta data can only be declared in the constructors of mesh generators so th
 Mesh meta data can be useful for setting up specific postprocessors, kernels, etc. that require certain geometry information.
 Mesh meta data are not possible or extremely hard to be derived directly from libMesh mesh object.
 A simple example of mesh meta data is the `num_elements_x` provided by [GeneratedMeshGenerator](GeneratedMeshGenerator.md), which can be used as an indicator for a mesh regular in x direction.
+Some mesh generators only modify the input meshes instead of creating new meshes from scratch. In such cases, the users may want to retain the mesh meta data of the input mesh.
+This can be achieved by setting `retain_all_input_mesh_metadata` as `true` to retain all the meta data of the input mesh, or by specifying the meta data to be retained in `selected_mesh_metadata_to_retain`.
