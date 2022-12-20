@@ -125,3 +125,57 @@ MeshMetaDataInterface::FindMeshMetaDataAlias(std::string full_new_name) const
   else
     return (*map_it).second;
 }
+
+void
+MeshMetaDataInterface::checkMeshMetadataRetainingSetting(
+    const MooseObject * moose_object,
+    const bool has_input,
+    const bool retain_all_input_mesh_metadata,
+    const std::vector<std::string> selected_mesh_metadata_to_retain)
+{
+  if (!has_input)
+  {
+    if (retain_all_input_mesh_metadata)
+      moose_object->paramError("retain_all_input_mesh_metadata",
+                               "In the absence of an input mesh, this parameter must not be true.");
+    if (!selected_mesh_metadata_to_retain.empty())
+      moose_object->paramError("selected_mesh_metadata_to_retain",
+                               "In the absence of an input mesh, this parameter must be empty.");
+  }
+  else if (retain_all_input_mesh_metadata && !selected_mesh_metadata_to_retain.empty())
+    moose_object->paramError(
+        "selected_mesh_metadata_to_retain",
+        "This parameter should not be provided if retain_all_input_mesh_metadata is set true.");
+}
+
+void
+MeshMetaDataInterface::retainAllInputMetaData(const MeshGeneratorName input_name,
+                                              const MeshGeneratorName current_name)
+{
+  const auto mesh_metadata_names = findMeshMetaData(input_name);
+  for (const auto & mmd_name : mesh_metadata_names)
+    addMeshMetaDataAlias(input_name, mmd_name, current_name, mmd_name);
+}
+
+void
+MeshMetaDataInterface::retainMeshMetaData(
+    const MooseObject * moose_object,
+    const MeshGeneratorName input_name,
+    const std::vector<std::string> selected_mesh_metadata_to_retain)
+{
+  // As we already check that selected_mesh_metadata_to_retain and retain_all_input_mesh_metadata
+  // are not redundant before calling this function, and as input_name does exist, an empty
+  // selected_mesh_metadata_to_retain is equivalent to that retain_all_input_mesh_metadata is true.
+  // Only one parameter needs to be passed.
+  if (selected_mesh_metadata_to_retain.empty())
+    retainAllInputMetaData(input_name, moose_object->name());
+  else
+    for (const auto & mmd_name : selected_mesh_metadata_to_retain)
+    {
+      if (!hasMeshProperty(mmd_name, input_name))
+        moose_object->paramError(
+            "selected_mesh_metadata_to_retain",
+            "The specified mesh metadata to retain does not exist in the input mesh.");
+      addMeshMetaDataAlias(input_name, mmd_name, moose_object->name(), mmd_name);
+    }
+}

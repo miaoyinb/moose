@@ -93,6 +93,40 @@ protected:
    */
   std::string FindMeshMetaDataAlias(std::string full_new_name) const;
 
+  /**
+   * Checks the sanity of the input parameters that are related to mesh metadata retainment
+   * @param moose_object MOOSE object of the mesh generator calling this method
+   * @param has_input whether the mesh generator takes another mesh generator as an input
+   * @param retain_all_input_mesh_metadata whether to retain all the mesh metadata from the input
+   * mesh
+   * @param selected_mesh_metadata_to_retain list of selected mesh metadata from the input mesh that
+   * need to be retained
+   */
+  void checkMeshMetadataRetainingSetting(
+      const MooseObject * moose_object,
+      const bool has_input,
+      const bool retain_all_input_mesh_metadata,
+      const std::vector<std::string> selected_mesh_metadata_to_retain);
+
+  /**
+   * Retains all the mesh metadata from the input mesh
+   * @param input_name name of the input mesh where the metadata come from
+   * @param current_name name of the current mesh that needs to retain the metadata
+   */
+  void retainAllInputMetaData(const MeshGeneratorName input_name,
+                              const MeshGeneratorName current_name);
+
+  /**
+   * Retains the specified mesh metadata from the input mesh
+   * @param moose_object MOOSE object of the mesh generator calling this method
+   * @param input_name name of the input mesh where the metadata come from
+   * @param selected_mesh_metadata_to_retain list of selected mesh metadata from the input mesh that
+   * need to be retained
+   */
+  void retainMeshMetaData(const MooseObject * moose_object,
+                          const MeshGeneratorName input_name,
+                          const std::vector<std::string> selected_mesh_metadata_to_retain);
+
 private:
   /// Helper function for actually registering the restartable data.
   RestartableDataValue & registerMetaDataOnApp(const std::string & name,

@@ -30,4 +30,21 @@
     requirement = "The system shall throw an error if some of the input mesh meta data are set to be "
                   "retained while the input mesh is not specified."
   []
+  [err_redundant_input]
+    type = RunException
+    input = 'patterned_hex.i'
+    cli_args = 'Mesh/hex_ren/selected_mesh_metadata_to_retain=pitch_metaå
+                --mesh-only err.e'
+    expect_err = 'This parameter should not be provided if retain_all_input_mesh_metadata is set true.'
+    requirement = "The system shall throw an error if this parameter is specified when retain_all_input_mesh_metadata is set true"
+  []
+  [err_nonexist_metadata]
+    type = RunException
+    input = 'patterned_hex.i'
+    cli_args = 'Mesh/hex_ren/selected_mesh_metadata_to_retain=nonexist_metadata
+                Mesh/hex_ren/retain_all_input_mesh_metadata=false
+                --mesh-only err.e'
+    expect_err = 'The specified mesh metadata to retain does not exist in the input mesh.'
+    requirement = "The system shall throw an error if this parameter spcifies a metadata that does not exist in the input mesh."
+  []
 []
