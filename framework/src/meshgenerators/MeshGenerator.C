@@ -28,8 +28,8 @@ MeshGenerator::validParams()
                         false,
                         "Whether to retain all the mesh metadata of the input mesh.");
 
-  params.addParamNamesToGroup(
-      "selected_mesh_metadata_to_retain retain_all_input_mesh_metadata", "Mesh Metadata Retainment");
+  params.addParamNamesToGroup("selected_mesh_metadata_to_retain retain_all_input_mesh_metadata",
+                              "Mesh Metadata Retainment");
 
   params.registerBase("MeshGenerator");
 
@@ -44,29 +44,7 @@ MeshGenerator::MeshGenerator(const InputParameters & parameters)
         getParam<std::vector<std::string>>("selected_mesh_metadata_to_retain")),
     _retain_all_input_mesh_metadata(getParam<bool>("retain_all_input_mesh_metadata"))
 {
-  if (isParamValid("input"))
-  {
-    const MeshGeneratorName input_name(getParam<MeshGeneratorName>("input"));
-    if (_retain_all_input_mesh_metadata)
-    {
-      if (!_selected_mesh_metadata_to_retain.empty())
-        paramError(
-            "selected_mesh_metadata_to_retain",
-            "This parameter should not be provided if retain_all_input_mesh_metadata is set true.");
-      const auto mesh_metadata_names = findMeshMetaData(input_name);
-      for (const auto & mmd_name : mesh_metadata_names)
-        addMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
-    }
-    else
-      for (const auto & mmd_name : _selected_mesh_metadata_to_retain)
-      {
-        if (!hasMeshProperty(mmd_name, input_name))
-          paramError("selected_mesh_metadata_to_retain",
-                     "The specified mesh metadata to retain does not exist in the input mesh.");
-        addMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
-      }
-  }
-  else
+  if (!isParamValid("input"))
   {
     if (_retain_all_input_mesh_metadata)
       paramError("retain_all_input_mesh_metadata",
@@ -161,6 +139,30 @@ MeshGenerator::buildDistributedMesh(unsigned int dim)
 std::unique_ptr<MeshBase>
 MeshGenerator::generateInternal()
 {
+  // Retain mesh metadata from input if applicable
+  if (isParamValid("input"))
+  {
+    const MeshGeneratorName input_name(getParam<MeshGeneratorName>("input"));
+    if (_retain_all_input_mesh_metadata)
+    {
+      if (!_selected_mesh_metadata_to_retain.empty())
+        paramError(
+            "selected_mesh_metadata_to_retain",
+            "This parameter should not be provided if retain_all_input_mesh_metadata is set true.");
+      const auto mesh_metadata_names = findMeshMetaData(input_name);
+      for (const auto & mmd_name : mesh_metadata_names)
+        addMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
+    }
+    else
+      for (const auto & mmd_name : _selected_mesh_metadata_to_retain)
+      {
+        if (!hasMeshProperty(mmd_name, input_name))
+          paramError("selected_mesh_metadata_to_retain",
+                     "The specified mesh metadata to retain does not exist in the input mesh.");
+        addMeshMetaDataAlias(input_name, mmd_name, name(), mmd_name);
+      }
+  }
+
   auto mesh = generate();
 
   if (getParam<bool>("show_info"))
