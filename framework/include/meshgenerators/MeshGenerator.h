@@ -184,16 +184,14 @@ MeshGenerator::declareMeshProperty(const std::string & data_name)
   if (_app.executingMeshGenerators())
     mooseError(
         "Declaration of mesh meta data can only happen within the constructor of mesh generators");
+  // NOTE: Because original mesh metadata declaration can only happen within the constructor,
+  // considering that mesh metadata alias is added in MeshGenerator::generateInternal(), it is
+  // impossible that a mesh metadata name declared here is already claimed by an alias. No check is
+  // needed.
 
   std::string full_name =
       std::string(MeshMetaDataInterface::SYSTEM) + "/" + name() + "/" + data_name;
 
-  if (full_name.compare(findMeshMetaDataAlias(full_name)) != 0)
-    mooseError("in Mesh Generator ",
-               _name,
-               ": the mesh metadata ",
-               data_name,
-               " has already been declared through the mesh metadata alias system.");
   // Here we will create the RestartableData even though we may not use this instance.
   // If it's already in use, the App will return a reference to the existing instance and
   // we'll return that one instead. We might refactor this to have the app create the

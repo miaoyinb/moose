@@ -28,4 +28,9 @@
               0 0 0;
                0 0'
   []
+  [trim]
+    type = HexagonMeshTrimmer
+    input = pattern
+    retain_all_input_mesh_metadata = true
+  []
 []
