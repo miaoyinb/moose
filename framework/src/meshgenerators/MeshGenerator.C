@@ -136,7 +136,10 @@ MeshGenerator::generateInternal()
 {
   // Retain mesh metadata from input if applicable
   if (isParamValid("input"))
-    retainMeshMetaData(this, getParam<MeshGeneratorName>("input"), _selected_mesh_metadata_to_retain);
+    retainMeshMetaData(this,
+                       getParam<MeshGeneratorName>("input"),
+                       _retain_all_input_mesh_metadata,
+                       _selected_mesh_metadata_to_retain);
 
   auto mesh = generate();
 

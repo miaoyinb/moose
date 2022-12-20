@@ -32,7 +32,7 @@ MeshMetaDataInterface::hasMeshProperty(const std::string & data_name,
                                        const std::string & prefix) const
 {
   std::string full_name = std::string(SYSTEM) + "/" + prefix + "/" + data_name;
-  return _meta_data_app.hasRestartableMetaData(FindMeshMetaDataAlias(full_name),
+  return _meta_data_app.hasRestartableMetaData(findMeshMetaDataAlias(full_name),
                                                MooseApp::MESH_META_DATA);
 }
 
@@ -55,6 +55,13 @@ MeshMetaDataInterface::addMeshMetaDataAlias(std::string original_prefix,
       std::string(SYSTEM) + "/" + original_prefix + "/" + original_name;
   const std::string full_new_name = std::string(SYSTEM) + "/" + new_prefix + "/" + new_name;
 
+  // Check if the new mesh metadata name has already been declared
+  if (hasMeshProperty(new_name, new_prefix))
+    mooseError("in Mesh Generator ",
+               new_prefix,
+               ": the mesh metadata ",
+               new_name,
+               " has already been declared.");
   // Create the mesh metadata alias system if it does not exist yet
   if (!_meta_data_app.hasRestartableMetaData(full_name, MooseApp::MESH_META_DATA))
   {
@@ -67,7 +74,7 @@ MeshMetaDataInterface::addMeshMetaDataAlias(std::string original_prefix,
     // Add the alias information to the just-created alias system
     // Note that if the original name itself is an alias, we need to track back to the real origin
     meta_data_alias_ref.set().emplace(
-        std::make_pair(full_new_name, FindMeshMetaDataAlias(full_original_name)));
+        std::make_pair(full_new_name, findMeshMetaDataAlias(full_original_name)));
   }
   // Just add a new line of alias information if the mesh metadata alias system already exists
   else
@@ -80,7 +87,7 @@ MeshMetaDataInterface::addMeshMetaDataAlias(std::string original_prefix,
         static_cast<RestartableData<std::unordered_map<std::string, std::string>> &>(
             *pitch_meta_data.value);
     meta_data_alias_ref.set().emplace(
-        std::make_pair(full_new_name, FindMeshMetaDataAlias(full_original_name)));
+        std::make_pair(full_new_name, findMeshMetaDataAlias(full_original_name)));
   }
 }
 
@@ -102,7 +109,7 @@ MeshMetaDataInterface::findMeshMetaData(std::string prefix) const
 }
 
 std::string
-MeshMetaDataInterface::FindMeshMetaDataAlias(std::string full_new_name) const
+MeshMetaDataInterface::findMeshMetaDataAlias(std::string full_new_name) const
 {
   const std::string full_name = std::string(SYSTEM) + "/MeshMetaDataAliasSystem";
   // If the mesh metadata alias system has not yet been created, no metadata has an alias. Just
@@ -161,21 +168,17 @@ void
 MeshMetaDataInterface::retainMeshMetaData(
     const MooseObject * moose_object,
     const MeshGeneratorName input_name,
+    const bool retain_all_input_mesh_metadata,
     const std::vector<std::string> selected_mesh_metadata_to_retain)
 {
-  // As we already check that selected_mesh_metadata_to_retain and retain_all_input_mesh_metadata
-  // are not redundant before calling this function, and as input_name does exist, an empty
-  // selected_mesh_metadata_to_retain is equivalent to that retain_all_input_mesh_metadata is true.
-  // Only one parameter needs to be passed.
-  if (selected_mesh_metadata_to_retain.empty())
+  if (retain_all_input_mesh_metadata)
     retainAllInputMetaData(input_name, moose_object->name());
-  else
-    for (const auto & mmd_name : selected_mesh_metadata_to_retain)
-    {
-      if (!hasMeshProperty(mmd_name, input_name))
-        moose_object->paramError(
-            "selected_mesh_metadata_to_retain",
-            "The specified mesh metadata to retain does not exist in the input mesh.");
-      addMeshMetaDataAlias(input_name, mmd_name, moose_object->name(), mmd_name);
-    }
+  for (const auto & mmd_name : selected_mesh_metadata_to_retain)
+  {
+    if (!hasMeshProperty(mmd_name, input_name))
+      moose_object->paramError(
+          "selected_mesh_metadata_to_retain",
+          "The specified mesh metadata to retain does not exist in the input mesh.");
+    addMeshMetaDataAlias(input_name, mmd_name, moose_object->name(), mmd_name);
+  }
 }

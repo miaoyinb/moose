@@ -91,7 +91,7 @@ protected:
    * @return the original full name of an alias mesh metadata or the full name of an non-alias mesh
    * metadata (identical to the input parameter)
    */
-  std::string FindMeshMetaDataAlias(std::string full_new_name) const;
+  std::string findMeshMetaDataAlias(std::string full_new_name) const;
 
   /**
    * Checks the sanity of the input parameters that are related to mesh metadata retainment
@@ -120,11 +120,14 @@ protected:
    * Retains the specified mesh metadata from the input mesh
    * @param moose_object MOOSE object of the mesh generator calling this method
    * @param input_name name of the input mesh where the metadata come from
+   * @param retain_all_input_mesh_metadata whether to retain all the mesh metadata from the input
+   * mesh
    * @param selected_mesh_metadata_to_retain list of selected mesh metadata from the input mesh that
    * need to be retained
    */
   void retainMeshMetaData(const MooseObject * moose_object,
                           const MeshGeneratorName input_name,
+                          const bool retain_all_input_mesh_metadata,
                           const std::vector<std::string> selected_mesh_metadata_to_retain);
 
 private:
@@ -142,14 +145,14 @@ MeshMetaDataInterface::getMeshProperty(const std::string & data_name, const std:
 
 {
   std::string full_name = std::string(SYSTEM) + "/" + prefix + "/" + data_name;
-  auto data_ptr = std::make_unique<RestartableData<T>>(FindMeshMetaDataAlias(full_name), nullptr);
+  auto data_ptr = std::make_unique<RestartableData<T>>(findMeshMetaDataAlias(full_name), nullptr);
 
   // Here we will create the RestartableData even though we may not use this instance.
   // If it's already in use, the App will return a reference to the existing instance and we'll
   // return that one instead. We might refactor this to have the app create the RestartableData
   // at a later date.
   auto & restartable_data_ref = static_cast<RestartableData<T> &>(
-      registerMetaDataOnApp(FindMeshMetaDataAlias(full_name), std::move(data_ptr)));
+      registerMetaDataOnApp(findMeshMetaDataAlias(full_name), std::move(data_ptr)));
 
   return restartable_data_ref.get();
 }

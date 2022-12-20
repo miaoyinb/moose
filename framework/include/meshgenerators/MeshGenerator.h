@@ -188,10 +188,16 @@ MeshGenerator::declareMeshProperty(const std::string & data_name)
   std::string full_name =
       std::string(MeshMetaDataInterface::SYSTEM) + "/" + name() + "/" + data_name;
 
+  if (full_name.compare(findMeshMetaDataAlias(full_name)) != 0)
+    mooseError("in Mesh Generator ",
+               _name,
+               ": the mesh metadata ",
+               data_name,
+               " has already been declared through the mesh metadata alias system.");
   // Here we will create the RestartableData even though we may not use this instance.
-  // If it's already in use, the App will return a reference to the existing instance and we'll
-  // return that one instead. We might refactor this to have the app create the RestartableData
-  // at a later date.
+  // If it's already in use, the App will return a reference to the existing instance and
+  // we'll return that one instead. We might refactor this to have the app create the
+  // RestartableData at a later date.
   auto data_ptr = std::make_unique<RestartableData<T>>(full_name, nullptr);
   auto & restartable_data_ref = static_cast<RestartableData<T> &>(_app.registerRestartableData(
       full_name, std::move(data_ptr), 0, false, MooseApp::MESH_META_DATA));
