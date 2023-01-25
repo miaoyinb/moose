@@ -68,6 +68,36 @@ protected:
   template <typename T>
   T & declareMeshProperty(const std::string & data_name, const T & init_value);
 
+  ///
+  const std::vector<std::string> _type_names = {"std::vector<unsigned int>",
+                                                "double",
+                                                "std::vector<double>",
+                                                "unsigned short",
+                                                "unsigned int",
+                                                "bool",
+                                                "unsigned long long",
+                                                "std::string",
+                                                "int",
+                                                "libMesh::Point",
+                                                "std::vector<unsigned int>",
+                                                "std::vector<int>",
+                                                "std::vector<unsigned short>",
+                                                "std::vector<unsigned long long>",
+                                                "std::vector<libMesh::Point>",
+                                                "std::vector<std::vector<double>>"};
+  /**
+   *
+   */
+  unsigned int declareForwardedMeshProperty(const std::string data_name,
+                                            const std::string input_mg_name);
+
+  /**
+   *
+   */
+  void setForwardedMeshProperty(const std::string data_name,
+                                const std::string input_mg_name,
+                                const unsigned int type_id);
+
   /**
    * Method for updating attributes to the mesh meta-data store, which can only be invoked in
    * the MeshGenerator generate routine only if the mesh generator property has already been
@@ -211,6 +241,134 @@ MeshGenerator::declareMeshProperty(const std::string & data_name, const T & init
   data = init_value;
 
   return data;
+}
+
+inline unsigned int
+MeshGenerator::declareForwardedMeshProperty(const std::string data_name,
+                                            const std::string input_mg_name)
+{
+  const std::string name_old =
+      std::string(MeshMetaDataInterface::SYSTEM) + "/" + input_mg_name + "/" + data_name;
+  const std::string old_type_str =
+      _app.getRestartableMetaData(name_old, MooseApp::MESH_META_DATA, 0).type();
+  const unsigned int type_id = std::distance(
+      _type_names.begin(), std::find(_type_names.begin(), _type_names.end(), old_type_str));
+
+  switch (type_id)
+  {
+    case 0:
+      declareMeshProperty<std::vector<unsigned int>>(data_name);
+      break;
+    case 1:
+      declareMeshProperty<double>(data_name);
+      break;
+    case 2:
+      declareMeshProperty<std::vector<double>>(data_name);
+      break;
+    case 3:
+      declareMeshProperty<unsigned short>(data_name);
+      break;
+    case 4:
+      declareMeshProperty<unsigned int>(data_name);
+      break;
+    case 5:
+      declareMeshProperty<bool>(data_name);
+      break;
+    case 6:
+      declareMeshProperty<unsigned long long>(data_name);
+      break;
+    case 7:
+      declareMeshProperty<std::string>(data_name);
+    case 8:
+      declareMeshProperty<int>(data_name);
+      break;
+    case 9:
+      declareMeshProperty<Point>(data_name);
+      break;
+    case 10:
+      declareMeshProperty<std::vector<unsigned int>>(data_name);
+      break;
+    case 11:
+      declareMeshProperty<std::vector<int>>(data_name);
+      break;
+    case 12:
+      declareMeshProperty<std::vector<unsigned short>>(data_name);
+      break;
+    case 13:
+      declareMeshProperty<std::vector<unsigned long long>>(data_name);
+      break;
+    case 14:
+      declareMeshProperty<std::vector<Point>>(data_name);
+      break;
+    case 15:
+      declareMeshProperty<std::vector<std::vector<double>>>(data_name);
+      break;
+      // default:
+  }
+  return type_id;
+}
+
+inline void
+MeshGenerator::setForwardedMeshProperty(const std::string data_name,
+                                        const std::string input_mg_name,
+                                        const unsigned int type_id)
+{
+  switch (type_id)
+  {
+    case 0:
+      setMeshProperty(data_name,
+                      getMeshProperty<std::vector<unsigned int>>(data_name, input_mg_name));
+      break;
+    case 1:
+      setMeshProperty(data_name, getMeshProperty<double>(data_name, input_mg_name));
+      break;
+    case 2:
+      setMeshProperty(data_name, getMeshProperty<std::vector<double>>(data_name, input_mg_name));
+      break;
+    case 3:
+      setMeshProperty(data_name, getMeshProperty<unsigned short>(data_name, input_mg_name));
+      break;
+    case 4:
+      setMeshProperty(data_name, getMeshProperty<unsigned int>(data_name, input_mg_name));
+      break;
+    case 5:
+      setMeshProperty(data_name, getMeshProperty<bool>(data_name, input_mg_name));
+      break;
+    case 6:
+      setMeshProperty(data_name, getMeshProperty<unsigned long long>(data_name, input_mg_name));
+      break;
+    case 7:
+      setMeshProperty(data_name, getMeshProperty<std::string>(data_name, input_mg_name));
+    case 8:
+      setMeshProperty(data_name, getMeshProperty<int>(data_name, input_mg_name));
+      break;
+    case 9:
+      setMeshProperty(data_name, getMeshProperty<Point>(data_name, input_mg_name));
+      break;
+    case 10:
+      setMeshProperty(data_name,
+                      getMeshProperty<std::vector<unsigned int>>(data_name, input_mg_name));
+      break;
+    case 11:
+      setMeshProperty(data_name, getMeshProperty<std::vector<int>>(data_name, input_mg_name));
+      break;
+    case 12:
+      setMeshProperty(data_name,
+                      getMeshProperty<std::vector<unsigned short>>(data_name, input_mg_name));
+      break;
+    case 13:
+      setMeshProperty(data_name,
+                      getMeshProperty<std::vector<unsigned long long>>(data_name, input_mg_name));
+      break;
+    case 14:
+      setMeshProperty(data_name, getMeshProperty<std::vector<Point>>(data_name, input_mg_name));
+      break;
+    case 15:
+      setMeshProperty(data_name,
+                      getMeshProperty<std::vector<std::vector<double>>>(data_name, input_mg_name));
+      break;
+      // default:
+  }
 }
 
 template <typename T>
