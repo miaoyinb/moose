@@ -20,15 +20,38 @@ MeshGenerator::validParams()
                         false,
                         "Whether or not to show mesh info after generating the mesh "
                         "(bounding box, element types, sidesets, nodesets, subdomains, etc)");
-
+  params.addParam<std::vector<std::string>>(
+      "selected_mesh_metadata_to_retain",
+      std::vector<std::string>(),
+      "Names of input mesh's metadata that are selected to retain.");
+  params.addParam<bool>("retain_all_input_mesh_metadata",
+                        false,
+                        "Whether to retain all the mesh metadata of the input mesh.");
   params.registerBase("MeshGenerator");
 
   return params;
 }
 
 MeshGenerator::MeshGenerator(const InputParameters & parameters)
-  : MooseObject(parameters), MeshMetaDataInterface(this), _mesh(_app.actionWarehouse().mesh())
+  : MooseObject(parameters),
+    MeshMetaDataInterface(this),
+    _mesh(_app.actionWarehouse().mesh()),
+    _selected_mesh_metadata_to_retain(
+        getParam<std::vector<std::string>>("selected_mesh_metadata_to_retain")),
+    _retain_all_input_mesh_metadata(getParam<bool>("retain_all_input_mesh_metadata"))
 {
+  checkMeshMetadataForwardingSetting(this,
+                                     isParamValid("input"),
+                                     _retain_all_input_mesh_metadata,
+                                     _selected_mesh_metadata_to_retain);
+  if (_retain_all_input_mesh_metadata)
+    declareAllForwardedMeshMetadata(
+        getParam<MeshGeneratorName>("input"), _forwarded_metadata_names, _forwarded_metadata_types);
+  else if (!_selected_mesh_metadata_to_retain.empty())
+    declareSelectedForwardedMeshMetadata(getParam<MeshGeneratorName>("input"),
+                                         _selected_mesh_metadata_to_retain,
+                                         _forwarded_metadata_names,
+                                         _forwarded_metadata_types);
 }
 
 std::unique_ptr<MeshBase> &
@@ -115,6 +138,10 @@ MeshGenerator::buildDistributedMesh(unsigned int dim)
 std::unique_ptr<MeshBase>
 MeshGenerator::generateInternal()
 {
+  if (!_forwarded_metadata_names.empty())
+    setForwardedMeshMetadata(
+        getParam<MeshGeneratorName>("input"), _forwarded_metadata_names, _forwarded_metadata_types);
+
   auto mesh = generate();
 
   if (getParam<bool>("show_info"))
@@ -146,4 +173,40 @@ MeshGenerator::addMeshSubgenerator(const std::string & generator_name,
   _app.addMeshGenerator(generator_name, name, params);
 
   return this->getMeshByName(name);
+}
+
+void
+MeshGenerator::declareAllForwardedMeshMetadata(const MeshGeneratorName input_name,
+                                               std::vector<std::string> & metadata_names,
+                                               std::vector<unsigned int> & metadata_types)
+{
+  metadata_names = identifyMeshMetaData(input_name);
+  for (const auto & metadata_name : metadata_names)
+    metadata_types.push_back(declareForwardedMeshProperty(metadata_name, input_name));
+}
+
+void
+MeshGenerator::declareSelectedForwardedMeshMetadata(
+    const MeshGeneratorName input_name,
+    const std::vector<std::string> selected_metadata_names,
+    std::vector<std::string> & metadata_names,
+    std::vector<unsigned int> & metadata_types)
+{
+  for (const auto & selected_metadata_name : selected_metadata_names)
+  {
+    if (!hasMeshProperty(selected_metadata_name, input_name))
+      paramError("selected_mesh_metadata_to_retain",
+                 "The metadata specified to be retained does not exist in the input mesh.");
+    metadata_names.push_back(selected_metadata_name);
+    metadata_types.push_back(declareForwardedMeshProperty(selected_metadata_name, input_name));
+  }
+}
+
+void
+MeshGenerator::setForwardedMeshMetadata(const MeshGeneratorName input_name,
+                                        const std::vector<std::string> metadata_names,
+                                        const std::vector<unsigned int> metadata_types)
+{
+  for (unsigned int i = 0; i < metadata_names.size(); i++)
+    setForwardedMeshProperty(metadata_names[i], input_name, metadata_types[i]);
 }

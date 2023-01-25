@@ -59,6 +59,26 @@ protected:
    */
   bool hasMeshProperty(const std::string & data_name, const std::string & prefix) const;
 
+  /**
+   * Checks the sanity of the input parameters that are related to mesh metadata retainment
+   * @param moose_object MOOSE object of the mesh generator calling this method
+   * @param has_input whether the mesh generator takes another mesh generator as an input
+   * @param retain_all_input_mesh_metadata whether to retain all the mesh metadata from the input
+   * mesh
+   * @param selected_mesh_metadata_to_retain list of selected mesh metadata from the input mesh that
+   * need to be retained
+   */
+  void checkMeshMetadataForwardingSetting(
+      const MooseObject * moose_object,
+      const bool has_input,
+      const bool retain_all_input_mesh_metadata,
+      const std::vector<std::string> selected_mesh_metadata_to_retain);
+
+  /**
+   *
+   */
+  std::vector<std::string> identifyMeshMetaData(const MeshGeneratorName prefix) const;
+
 private:
   /// Helper function for actually registering the restartable data.
   RestartableDataValue & registerMetaDataOnApp(const std::string & name,

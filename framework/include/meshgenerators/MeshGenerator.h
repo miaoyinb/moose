@@ -94,9 +94,31 @@ protected:
   /**
    *
    */
+  void declareAllForwardedMeshMetadata(const MeshGeneratorName input_name,
+                                       std::vector<std::string> & metadata_names,
+                                       std::vector<unsigned int> & metadata_types);
+
+  /**
+   *
+   */
+  void declareSelectedForwardedMeshMetadata(const MeshGeneratorName input_name,
+                                            const std::vector<std::string> selected_metadata_names,
+                                            std::vector<std::string> & metadata_names,
+                                            std::vector<unsigned int> & metadata_types);
+
+  /**
+   *
+   */
   void setForwardedMeshProperty(const std::string data_name,
                                 const std::string input_mg_name,
                                 const unsigned int type_id);
+
+  /**
+   *
+   */
+  void setForwardedMeshMetadata(const MeshGeneratorName input_name,
+                                const std::vector<std::string> metadata_names,
+                                const std::vector<unsigned int> metadata_types);
 
   /**
    * Method for updating attributes to the mesh meta-data store, which can only be invoked in
@@ -148,6 +170,17 @@ protected:
 
   /// References to the mesh and displaced mesh (currently in the ActionWarehouse)
   std::shared_ptr<MooseMesh> & _mesh;
+
+  /// List of selected mesh metadata from the input mesh that need to be retained
+  const std::vector<std::string> _selected_mesh_metadata_to_retain;
+
+  /// Whether to retain all the mesh metadata from the input mesh
+  const bool _retain_all_input_mesh_metadata;
+
+  ///
+  std::vector<std::string> _forwarded_metadata_names;
+  ///
+  std::vector<unsigned int> _forwarded_metadata_types;
 
   /**
    * Build a \p MeshBase object whose underlying type will be determined by the Mesh input file
