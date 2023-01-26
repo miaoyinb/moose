@@ -68,38 +68,65 @@ protected:
   template <typename T>
   T & declareMeshProperty(const std::string & data_name, const T & init_value);
 
-  ///
-  const std::vector<std::string> _type_names = {"std::vector<unsigned int>",
-                                                "double",
-                                                "std::vector<double>",
-                                                "unsigned short",
-                                                "unsigned int",
-                                                "bool",
-                                                "unsigned long long",
-                                                "std::string",
-                                                "int",
-                                                "libMesh::Point",
-                                                "std::vector<unsigned int>",
-                                                "std::vector<int>",
-                                                "std::vector<unsigned short>",
-                                                "std::vector<unsigned long long>",
-                                                "std::vector<libMesh::Point>",
-                                                "std::vector<std::vector<double>>"};
+  /// This collects all the type names that are declared as Mesh Metadata
+  const std::vector<std::string> _type_names = {
+      "std::vector<unsigned int>",
+      "double",
+      "std::vector<double>",
+      "unsigned short",
+      "unsigned int",
+      "bool",
+      "unsigned long long",
+      "std::string",
+      "int",
+      "libMesh::Point",
+      "std::vector<unsigned int>",
+      "std::vector<int>",
+      "std::vector<unsigned short>",
+      "std::vector<unsigned long long>",
+      "std::vector<libMesh::Point>",
+      "std::vector<std::vector<double>>",
+      "std::map<std::string, std::pair<unsigned short, unsigned long long>, "
+      "std::less<std::string>, std::allocator<std::pair<std::stringconst, std::pair<unsigned "
+      "short, unsigned long long> > > >",
+      "short",
+      "std::map<unsigned short, std::vector<std::vector<unsigned short>>, std::less<unsigned "
+      "short>, std::allocator<std::pair<unsigned short const, std::vector<std::vector<unsigned "
+      "short>> > > >",
+      "std::map<unsigned short, std::vector<std::vector<std::string>>, std::less<unsigned short>, "
+      "std::allocator<std::pair<unsigned short const, std::vector<std::vector<std::string>> > > >",
+      "std::vector<std::string>",
+      "std::vector<std::vector<unsigned short>>",
+      "std::vector<std::vector<std::string>>",
+      "std::map<short, libMesh::VectorValue<double>, std::less<short>, "
+      "std::allocator<std::pair<short const, libMesh::VectorValue<double> > > >"};
+
   /**
-   *
+   * Declares a mesh metadata that is a copy of another mesh's metadata
+   * @param data_name name of the mesh metadata to be copied
+   * @param input_mg_name name of the input mesh that contains the source mesh metadata
+   * @returns type index of the mesh metadata declared; the index is based on _type_names
    */
   unsigned int declareForwardedMeshProperty(const std::string data_name,
                                             const std::string input_mg_name);
 
   /**
-   *
+   * Declares multiple mesh metadata that copy all the mesh metadata of the input mesh
+   * @param input_name name of the input mesh that contains the source mesh metadata
+   * @param metadata_names list of the names of all the mesh metadata that are declared
+   * @param metadata_types list of the type indices of all the mesh metadata that are declared
    */
   void declareAllForwardedMeshMetadata(const MeshGeneratorName input_name,
                                        std::vector<std::string> & metadata_names,
                                        std::vector<unsigned int> & metadata_types);
 
   /**
-   *
+   * Declares multiple mesh metadata that copy selected mesh metadata of the input mesh
+   * @param input_name name of the input mesh that contains the source mesh metadata
+   * @param selected_metadata_names list of the mesh metadata names in the input mesh that need to
+   * be copied
+   * @param metadata_names list of the names of the selected mesh metadata that are declared
+   * @param metadata_types list of the type indices of the selected mesh metadata that are declared
    */
   void declareSelectedForwardedMeshMetadata(const MeshGeneratorName input_name,
                                             const std::vector<std::string> selected_metadata_names,
@@ -107,14 +134,21 @@ protected:
                                             std::vector<unsigned int> & metadata_types);
 
   /**
-   *
+   * Sets one declared mesh metadata's value using a mesh metadata value from the input mesh
+   * @param data_name name of the mesh metadata to be copied
+   * @param input_mg_name name of the input mesh that contains the source mesh metadata
+   * @param type_id type index of the mesh metadata to be set; the index is based on _type_names
    */
   void setForwardedMeshProperty(const std::string data_name,
                                 const std::string input_mg_name,
                                 const unsigned int type_id);
 
   /**
-   *
+   * Sets a series of declared mesh metadata's values using mesh metadata values from the input mesh
+   * @param input_name name of the input mesh that contains the source mesh metadata
+   * @param metadata_names list of the names of the selected mesh metadata that need to be set
+   * @param metadata_types list of the type indices of the selected mesh metadata that need to be
+   * set
    */
   void setForwardedMeshMetadata(const MeshGeneratorName input_name,
                                 const std::vector<std::string> metadata_names,
@@ -251,6 +285,23 @@ MeshGenerator::declareMeshProperty(const std::string & data_name)
   if (_app.executingMeshGenerators())
     mooseError(
         "Declaration of mesh meta data can only happen within the constructor of mesh generators");
+  // Check the uniqueness
+  if (hasMeshProperty(data_name, _name))
+    mooseError("In Mesh Generator ",
+               _name,
+               ": the to-be-declared mesh metadata named ",
+               data_name,
+               " has already been declared.");
+  // Check if the data type has been included in _type_names
+  const std::string metadata_type_name = MooseUtils::prettyCppType<T>();
+  if (std::find(_type_names.begin(), _type_names.end(), metadata_type_name) == _type_names.end())
+    mooseError("In Mesh Generator ",
+               _name,
+               ": the declared mesh metadata named ",
+               data_name,
+               " has the type, ",
+               metadata_type_name,
+               ", that has not been included in _type_names.");
 
   std::string full_name =
       std::string(MeshMetaDataInterface::SYSTEM) + "/" + name() + "/" + data_name;
@@ -336,7 +387,41 @@ MeshGenerator::declareForwardedMeshProperty(const std::string data_name,
     case 15:
       declareMeshProperty<std::vector<std::vector<double>>>(data_name);
       break;
-      // default:
+    case 16:
+      declareMeshProperty<std::map<std::string, std::pair<unsigned short, unsigned long long>>>(
+          data_name);
+      break;
+    case 17:
+      declareMeshProperty<short>(data_name);
+      break;
+    case 18:
+      declareMeshProperty<std::map<subdomain_id_type, std::vector<std::vector<subdomain_id_type>>>>(
+          data_name);
+      break;
+    case 19:
+      declareMeshProperty<std::map<subdomain_id_type, std::vector<std::vector<std::string>>>>(
+          data_name);
+      break;
+    case 20:
+      declareMeshProperty<std::vector<std::string>>(data_name);
+      break;
+    case 21:
+      declareMeshProperty<std::vector<std::vector<short>>>(data_name);
+      break;
+    case 22:
+      declareMeshProperty<std::vector<std::vector<std::string>>>(data_name);
+      break;
+    case 23:
+      declareMeshProperty<std::map<BoundaryID, RealVectorValue>>(data_name);
+      break;
+    default:
+      mooseError("In Mesh Generator ",
+                 _name,
+                 ": the forwarded mesh metadata named ",
+                 data_name,
+                 " has the type, ",
+                 old_type_str,
+                 ", that has not been included in _type_names.");
   }
   return type_id;
 }
@@ -400,7 +485,51 @@ MeshGenerator::setForwardedMeshProperty(const std::string data_name,
       setMeshProperty(data_name,
                       getMeshProperty<std::vector<std::vector<double>>>(data_name, input_mg_name));
       break;
-      // default:
+    case 16:
+      setMeshProperty(
+          data_name,
+          getMeshProperty<std::map<std::string, std::pair<unsigned short, unsigned long long>>>(
+              data_name, input_mg_name));
+      break;
+    case 17:
+      setMeshProperty(data_name, getMeshProperty<short>(data_name, input_mg_name));
+      break;
+    case 18:
+      setMeshProperty(
+          data_name,
+          getMeshProperty<std::map<subdomain_id_type, std::vector<std::vector<subdomain_id_type>>>>(
+              data_name, input_mg_name));
+      break;
+    case 19:
+      setMeshProperty(
+          data_name,
+          getMeshProperty<std::map<subdomain_id_type, std::vector<std::vector<std::string>>>>(
+              data_name, input_mg_name));
+      break;
+    case 20:
+      setMeshProperty(data_name,
+                      getMeshProperty<std::vector<std::string>>(data_name, input_mg_name));
+      break;
+    case 21:
+      setMeshProperty(data_name,
+                      getMeshProperty<std::vector<std::vector<short>>>(data_name, input_mg_name));
+      break;
+    case 22:
+      setMeshProperty(
+          data_name,
+          getMeshProperty<std::vector<std::vector<std::string>>>(data_name, input_mg_name));
+      break;
+    case 23:
+      setMeshProperty(
+          data_name,
+          getMeshProperty<std::map<BoundaryID, RealVectorValue>>(data_name, input_mg_name));
+      break;
+    default:
+      mooseError("In Mesh Generator ",
+                 _name,
+                 ": the forwarded mesh metadata named ",
+                 data_name,
+                 " has the type that has not been included in _type_names.");
   }
 }
 

@@ -1,0 +1,63 @@
+[Tests]
+  # design = 'meshgenerators/PatternedHexMeshGenerator.md'
+  # issues = '#18628 #20148 #20514'
+  [basic]
+    type = 'Exodiff'
+    input = 'patterned_hex.i'
+    exodiff = 'patterned_hex_in.e'
+    exodiff_opts = '-pedantic'
+    cli_args = 'Mesh/inactive="trim"
+                  --mesh-only'
+    requirement = 'The system shall retain the specified mesh metadata from the input mesh.'
+    recover = false
+  []
+  [err_non_input_1]
+    type = RunException
+    input = 'patterned_hex.i'
+    cli_args = 'Mesh/inactive="hex_ren pattern trim"
+                  Mesh/hex_1/retain_all_input_mesh_metadata=true
+                  --mesh-only err.e'
+    expect_err = 'In the absence of an input mesh, this parameter must not be true.'
+    requirement = "The system shall throw an error if all the input mesh meta data are set to be "
+                  "retained while the input mesh is not specified."
+  []
+  [err_non_input_2]
+    type = RunException
+    input = 'patterned_hex.i'
+    cli_args = 'Mesh/inactive="hex_ren pattern trim"
+                  Mesh/hex_1/selected_mesh_metadata_to_retain=pitch_meta
+                  --mesh-only err.e'
+    expect_err = 'In the absence of an input mesh, this parameter must be empty.'
+    requirement = "The system shall throw an error if some of the input mesh meta data are set to be "
+                  "retained while the input mesh is not specified."
+  []
+  [err_redundant_input]
+    type = RunException
+    input = 'patterned_hex.i'
+    cli_args = 'Mesh/inactive="trim"
+                  Mesh/hex_ren/selected_mesh_metadata_to_retain=pitch_metaå
+                  --mesh-only err.e'
+    expect_err = 'This parameter should not be provided if retain_all_input_mesh_metadata is set true.'
+    requirement = "The system shall throw an error if this parameter is specified when "
+                  "retain_all_input_mesh_metadata is set true"
+  []
+  [err_nonexist_metadata]
+    type = RunException
+    input = 'patterned_hex.i'
+    cli_args = 'Mesh/inactive="trim"
+                  Mesh/hex_ren/selected_mesh_metadata_to_retain=nonexist_metadata
+                  Mesh/hex_ren/retain_all_input_mesh_metadata=false
+                  --mesh-only err.e'
+    expect_err = 'The metadata specified to be retained does not exist in the input mesh.'
+    requirement = "The system shall throw an error if this parameter spcifies a metadata that does "
+                  "not exist in the input mesh."
+  []
+  [err_redundant_declaration]
+    type = RunException
+    input = 'patterned_hex.i'
+    cli_args = '--mesh-only err.e'
+    expect_err = 'has already been declared.'
+    requirement = "The system shall throw an error if the mesh metadata alias system want to create "
+                  "an alias that has already been declared."
+  []
+[]
