@@ -68,6 +68,68 @@ protected:
   template <typename T>
   T & declareMeshProperty(const std::string & data_name, const T & init_value);
 
+  ///
+  enum type_names_enum
+  {
+    typeVectorUnsignedInt,
+    typeDouble,
+    typeVectorDouble,
+    typeUnsignedShort,
+    typeUnsignedInt,
+    typeBool,
+    typeUnsignedLongLong,
+    typeString,
+    typeInt,
+    typePoint,
+    typeVectorInt,
+    typeVectorUnsignedShort,
+    typeVectorUnsignedLongLong,
+    typeVectorPoint,
+    typeVectorVectorDouble,
+    typeMapStringPairUnsignedShortUnsignedLongLong,
+    typeShort,
+    typeMapSubdomainIdTypeVectorVectorSubdomainIdType,
+    typeMapSubdomainIdTypeVectorVectorString,
+    typeVectorString,
+    typeVectorVectorShort,
+    typeVectorVectorString,
+    typeMapBoundaryIDRealVectorValue,
+  };
+  ///
+  const std::map<std::string, type_names_enum> _type_name_map = {
+      {"std::vector<unsigned int>", typeVectorUnsignedInt},
+      {"double", typeDouble},
+      {"std::vector<double>", typeVectorDouble},
+      {"unsigned short", typeUnsignedShort},
+      {"unsigned int", typeUnsignedInt},
+      {"bool", typeBool},
+      {"unsigned long long", typeUnsignedLongLong},
+      {"std::string", typeString},
+      {"int", typeInt},
+      {"libMesh::Point", typePoint},
+      {"std::vector<int>", typeVectorInt},
+      {"std::vector<unsigned short>", typeVectorUnsignedShort},
+      {"std::vector<unsigned long long>", typeVectorUnsignedLongLong},
+      {"std::vector<libMesh::Point>", typeVectorPoint},
+      {"std::vector<std::vector<double>>", typeVectorVectorDouble},
+      {"std::map<std::string, std::pair<unsigned short, unsigned long long>, "
+       "std::less<std::string>, std::allocator<std::pair<std::stringconst, std::pair<unsigned "
+       "short, unsigned long long> > > >",
+       typeMapStringPairUnsignedShortUnsignedLongLong},
+      {"short", typeShort},
+      {"std::map<unsigned short, std::vector<std::vector<unsigned short>>, std::less<unsigned "
+       "short>, std::allocator<std::pair<unsigned short const, std::vector<std::vector<unsigned "
+       "short>> > > >",
+       typeMapSubdomainIdTypeVectorVectorSubdomainIdType},
+      {"std::map<unsigned short, std::vector<std::vector<std::string>>, std::less<unsigned short>, "
+       "std::allocator<std::pair<unsigned short const, std::vector<std::vector<std::string>> > > >",
+       typeMapSubdomainIdTypeVectorVectorString},
+      {"std::vector<std::string>", typeVectorString},
+      {"std::vector<std::vector<unsigned short>>", typeVectorVectorShort},
+      {"std::vector<std::vector<std::string>>", typeVectorVectorString},
+      {"std::map<short, libMesh::VectorValue<double>, std::less<short>, "
+       "std::allocator<std::pair<short const, libMesh::VectorValue<double> > > >",
+       typeMapBoundaryIDRealVectorValue}};
   /// This collects all the type names that are declared as Mesh Metadata
   const std::vector<std::string> _type_names = {
       "std::vector<unsigned int>",
@@ -80,7 +142,6 @@ protected:
       "std::string",
       "int",
       "libMesh::Point",
-      "std::vector<unsigned int>",
       "std::vector<int>",
       "std::vector<unsigned short>",
       "std::vector<unsigned long long>",
@@ -93,8 +154,10 @@ protected:
       "std::map<unsigned short, std::vector<std::vector<unsigned short>>, std::less<unsigned "
       "short>, std::allocator<std::pair<unsigned short const, std::vector<std::vector<unsigned "
       "short>> > > >",
-      "std::map<unsigned short, std::vector<std::vector<std::string>>, std::less<unsigned short>, "
-      "std::allocator<std::pair<unsigned short const, std::vector<std::vector<std::string>> > > >",
+      "std::map<unsigned short, std::vector<std::vector<std::string>>, std::less<unsigned "
+      "short>, "
+      "std::allocator<std::pair<unsigned short const, std::vector<std::vector<std::string>> > "
+      "> >",
       "std::vector<std::string>",
       "std::vector<std::vector<unsigned short>>",
       "std::vector<std::vector<std::string>>",
@@ -105,10 +168,10 @@ protected:
    * Declares a mesh metadata that is a copy of another mesh's metadata
    * @param data_name name of the mesh metadata to be copied
    * @param input_mg_name name of the input mesh that contains the source mesh metadata
-   * @returns type index of the mesh metadata declared; the index is based on _type_names
+   * @returns type index enum of the mesh metadata declared; the index is based on _type_name_map
    */
-  unsigned int declareForwardedMeshProperty(const std::string data_name,
-                                            const std::string input_mg_name);
+  type_names_enum declareForwardedMeshProperty(const std::string data_name,
+                                               const std::string input_mg_name);
 
   /**
    * Declares multiple mesh metadata that copy all the mesh metadata of the input mesh
@@ -118,7 +181,7 @@ protected:
    */
   void declareAllForwardedMeshMetadata(const MeshGeneratorName input_name,
                                        std::vector<std::string> & metadata_names,
-                                       std::vector<unsigned int> & metadata_types);
+                                       std::vector<type_names_enum> & metadata_types);
 
   /**
    * Declares multiple mesh metadata that copy selected mesh metadata of the input mesh
@@ -131,7 +194,7 @@ protected:
   void declareSelectedForwardedMeshMetadata(const MeshGeneratorName input_name,
                                             const std::vector<std::string> selected_metadata_names,
                                             std::vector<std::string> & metadata_names,
-                                            std::vector<unsigned int> & metadata_types);
+                                            std::vector<type_names_enum> & metadata_types);
 
   /**
    * Sets one declared mesh metadata's value using a mesh metadata value from the input mesh
@@ -152,7 +215,7 @@ protected:
    */
   void setForwardedMeshMetadata(const MeshGeneratorName input_name,
                                 const std::vector<std::string> metadata_names,
-                                const std::vector<unsigned int> metadata_types);
+                                const std::vector<type_names_enum> metadata_types);
 
   /**
    * Method for updating attributes to the mesh meta-data store, which can only be invoked in
@@ -214,7 +277,7 @@ protected:
   ///
   std::vector<std::string> _forwarded_metadata_names;
   ///
-  std::vector<unsigned int> _forwarded_metadata_types;
+  std::vector<type_names_enum> _forwarded_metadata_types;
 
   /**
    * Build a \p MeshBase object whose underlying type will be determined by the Mesh input file
@@ -292,16 +355,16 @@ MeshGenerator::declareMeshProperty(const std::string & data_name)
                ": the to-be-declared mesh metadata named ",
                data_name,
                " has already been declared.");
-  // Check if the data type has been included in _type_names
+  // Check if the data type has been included in _type_name_map
   const std::string metadata_type_name = MooseUtils::prettyCppType<T>();
-  if (std::find(_type_names.begin(), _type_names.end(), metadata_type_name) == _type_names.end())
+  if (_type_name_map.find(metadata_type_name) == _type_name_map.end())
     mooseError("In Mesh Generator ",
                _name,
                ": the declared mesh metadata named ",
                data_name,
                " has the type, ",
                metadata_type_name,
-               ", that has not been included in _type_names.");
+               ", that has not been included in _type_name_map.");
 
   std::string full_name =
       std::string(MeshMetaDataInterface::SYSTEM) + "/" + name() + "/" + data_name;
@@ -327,7 +390,7 @@ MeshGenerator::declareMeshProperty(const std::string & data_name, const T & init
   return data;
 }
 
-inline unsigned int
+inline MeshGenerator::type_names_enum
 MeshGenerator::declareForwardedMeshProperty(const std::string data_name,
                                             const std::string input_mg_name)
 {
@@ -335,83 +398,89 @@ MeshGenerator::declareForwardedMeshProperty(const std::string data_name,
       std::string(MeshMetaDataInterface::SYSTEM) + "/" + input_mg_name + "/" + data_name;
   const std::string old_type_str =
       _app.getRestartableMetaData(name_old, MooseApp::MESH_META_DATA, 0).type();
-  const unsigned int type_id = std::distance(
-      _type_names.begin(), std::find(_type_names.begin(), _type_names.end(), old_type_str));
+
+  type_names_enum type_id;
+  if (_type_name_map.find(old_type_str) == _type_name_map.end())
+    mooseError("In Mesh Generator ",
+               _name,
+               ": the forwarded mesh metadata named ",
+               data_name,
+               " has the type, ",
+               old_type_str,
+               ", that has not been included in _type_name_map.");
+  type_id = _type_name_map.find(old_type_str)->second;
 
   switch (type_id)
   {
-    case 0:
+    case typeVectorUnsignedInt:
       declareMeshProperty<std::vector<unsigned int>>(data_name);
       break;
-    case 1:
+    case typeDouble:
       declareMeshProperty<double>(data_name);
       break;
-    case 2:
+    case typeVectorDouble:
       declareMeshProperty<std::vector<double>>(data_name);
       break;
-    case 3:
+    case typeUnsignedShort:
       declareMeshProperty<unsigned short>(data_name);
       break;
-    case 4:
+    case typeUnsignedInt:
       declareMeshProperty<unsigned int>(data_name);
       break;
-    case 5:
+    case typeBool:
       declareMeshProperty<bool>(data_name);
       break;
-    case 6:
+    case typeUnsignedLongLong:
       declareMeshProperty<unsigned long long>(data_name);
       break;
-    case 7:
+    case typeString:
       declareMeshProperty<std::string>(data_name);
-    case 8:
+    case typeInt:
       declareMeshProperty<int>(data_name);
       break;
-    case 9:
+    case typePoint:
       declareMeshProperty<Point>(data_name);
       break;
-    case 10:
-      declareMeshProperty<std::vector<unsigned int>>(data_name);
-      break;
-    case 11:
+    case typeVectorInt:
       declareMeshProperty<std::vector<int>>(data_name);
       break;
-    case 12:
+    case typeVectorUnsignedShort:
       declareMeshProperty<std::vector<unsigned short>>(data_name);
       break;
-    case 13:
+    case typeVectorUnsignedLongLong:
       declareMeshProperty<std::vector<unsigned long long>>(data_name);
       break;
-    case 14:
+    case typeVectorPoint:
       declareMeshProperty<std::vector<Point>>(data_name);
       break;
-    case 15:
+    case typeVectorVectorDouble:
       declareMeshProperty<std::vector<std::vector<double>>>(data_name);
       break;
-    case 16:
+    case typeMapStringPairUnsignedShortUnsignedLongLong:
       declareMeshProperty<std::map<std::string, std::pair<unsigned short, unsigned long long>>>(
           data_name);
       break;
-    case 17:
+    case typeShort:
       declareMeshProperty<short>(data_name);
       break;
-    case 18:
+    case typeMapSubdomainIdTypeVectorVectorSubdomainIdType:
       declareMeshProperty<std::map<subdomain_id_type, std::vector<std::vector<subdomain_id_type>>>>(
           data_name);
       break;
-    case 19:
+    case typeMapSubdomainIdTypeVectorVectorString:
       declareMeshProperty<std::map<subdomain_id_type, std::vector<std::vector<std::string>>>>(
           data_name);
       break;
-    case 20:
+    case typeVectorString:
       declareMeshProperty<std::vector<std::string>>(data_name);
       break;
-    case 21:
+    case typeVectorVectorShort:
       declareMeshProperty<std::vector<std::vector<short>>>(data_name);
       break;
-    case 22:
+    case typeVectorVectorString:
       declareMeshProperty<std::vector<std::vector<std::string>>>(data_name);
       break;
-    case 23:
+    case typeMapBoundaryIDRealVectorValue:
       declareMeshProperty<std::map<BoundaryID, RealVectorValue>>(data_name);
       break;
     default:
@@ -464,62 +533,58 @@ MeshGenerator::setForwardedMeshProperty(const std::string data_name,
       setMeshProperty(data_name, getMeshProperty<Point>(data_name, input_mg_name));
       break;
     case 10:
-      setMeshProperty(data_name,
-                      getMeshProperty<std::vector<unsigned int>>(data_name, input_mg_name));
-      break;
-    case 11:
       setMeshProperty(data_name, getMeshProperty<std::vector<int>>(data_name, input_mg_name));
       break;
-    case 12:
+    case 11:
       setMeshProperty(data_name,
                       getMeshProperty<std::vector<unsigned short>>(data_name, input_mg_name));
       break;
-    case 13:
+    case 12:
       setMeshProperty(data_name,
                       getMeshProperty<std::vector<unsigned long long>>(data_name, input_mg_name));
       break;
-    case 14:
+    case 13:
       setMeshProperty(data_name, getMeshProperty<std::vector<Point>>(data_name, input_mg_name));
       break;
-    case 15:
+    case 14:
       setMeshProperty(data_name,
                       getMeshProperty<std::vector<std::vector<double>>>(data_name, input_mg_name));
       break;
-    case 16:
+    case 15:
       setMeshProperty(
           data_name,
           getMeshProperty<std::map<std::string, std::pair<unsigned short, unsigned long long>>>(
               data_name, input_mg_name));
       break;
-    case 17:
+    case 16:
       setMeshProperty(data_name, getMeshProperty<short>(data_name, input_mg_name));
       break;
-    case 18:
+    case 17:
       setMeshProperty(
           data_name,
           getMeshProperty<std::map<subdomain_id_type, std::vector<std::vector<subdomain_id_type>>>>(
               data_name, input_mg_name));
       break;
-    case 19:
+    case 18:
       setMeshProperty(
           data_name,
           getMeshProperty<std::map<subdomain_id_type, std::vector<std::vector<std::string>>>>(
               data_name, input_mg_name));
       break;
-    case 20:
+    case 19:
       setMeshProperty(data_name,
                       getMeshProperty<std::vector<std::string>>(data_name, input_mg_name));
       break;
-    case 21:
+    case 20:
       setMeshProperty(data_name,
                       getMeshProperty<std::vector<std::vector<short>>>(data_name, input_mg_name));
       break;
-    case 22:
+    case 21:
       setMeshProperty(
           data_name,
           getMeshProperty<std::vector<std::vector<std::string>>>(data_name, input_mg_name));
       break;
-    case 23:
+    case 22:
       setMeshProperty(
           data_name,
           getMeshProperty<std::map<BoundaryID, RealVectorValue>>(data_name, input_mg_name));

@@ -178,7 +178,7 @@ MeshGenerator::addMeshSubgenerator(const std::string & generator_name,
 void
 MeshGenerator::declareAllForwardedMeshMetadata(const MeshGeneratorName input_name,
                                                std::vector<std::string> & metadata_names,
-                                               std::vector<unsigned int> & metadata_types)
+                                               std::vector<type_names_enum> & metadata_types)
 {
   metadata_names = identifyMeshMetaData(input_name);
   for (const auto & metadata_name : metadata_names)
@@ -190,7 +190,7 @@ MeshGenerator::declareSelectedForwardedMeshMetadata(
     const MeshGeneratorName input_name,
     const std::vector<std::string> selected_metadata_names,
     std::vector<std::string> & metadata_names,
-    std::vector<unsigned int> & metadata_types)
+    std::vector<type_names_enum> & metadata_types)
 {
   for (const auto & selected_metadata_name : selected_metadata_names)
   {
@@ -205,7 +205,7 @@ MeshGenerator::declareSelectedForwardedMeshMetadata(
 void
 MeshGenerator::setForwardedMeshMetadata(const MeshGeneratorName input_name,
                                         const std::vector<std::string> metadata_names,
-                                        const std::vector<unsigned int> metadata_types)
+                                        const std::vector<type_names_enum> metadata_types)
 {
   for (unsigned int i = 0; i < metadata_names.size(); i++)
     setForwardedMeshProperty(metadata_names[i], input_name, metadata_types[i]);
