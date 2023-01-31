@@ -68,7 +68,20 @@ protected:
   template <typename T>
   T & declareMeshProperty(const std::string & data_name, const T & init_value);
 
-  /// eunm class for type names
+  /**
+   * Checks the sanity of the input parameters that are related to mesh metadata retainment
+   * @param has_input whether the mesh generator takes another mesh generator as an input
+   * @param retain_all_input_mesh_metadata whether to retain all the mesh metadata from the input
+   * mesh
+   * @param selected_mesh_metadata_to_retain list of selected mesh metadata from the input mesh that
+   * need to be retained
+   */
+  void checkMeshMetadataForwardingSetting(
+      const bool has_input,
+      const bool retain_all_input_mesh_metadata,
+      const std::vector<std::string> selected_mesh_metadata_to_retain);
+
+  /// enum class for all types that can be used as mesh metadata
   enum type_names_enum
   {
     typeVectorUnsignedInt,
@@ -132,14 +145,14 @@ protected:
        typeMapBoundaryIDRealVectorValue}};
 
   /**
-   * Double-checks if the declared forwarded mesh metadata has the correct type
+   * Checks if the declared forwarded mesh metadata has the correct type
    * @param temp_value the empty declared metadata that contains the type information
    * @param type_name the reference mesh metadata type name to be compared to
    * @return whether the declared forwarded mesh metadata has the same type as described by the
    * reference
    */
   template <typename T>
-  bool typeDoubleCheck(T temp_value, const std::string type_name);
+  bool meshMetadataTypeCheck(T /* temp_value */, const std::string type_name);
 
   /**
    * Declares a mesh metadata that is a copy of another mesh's metadata
@@ -369,9 +382,8 @@ MeshGenerator::declareMeshProperty(const std::string & data_name, const T & init
 
 template <typename T>
 inline bool
-MeshGenerator::typeDoubleCheck(T temp_value, const std::string type_name)
+MeshGenerator::meshMetadataTypeCheck(T /* temp_value */, const std::string type_name)
 {
-  (void)temp_value;
   return MooseUtils::prettyCppType<T>() == type_name;
 }
 
@@ -399,95 +411,99 @@ MeshGenerator::declareForwardedMeshProperty(const std::string data_name,
   switch (type_id)
   {
     case typeVectorUnsignedInt:
-      is_type_consistent =
-          typeDoubleCheck(declareMeshProperty<std::vector<unsigned int>>(data_name), old_type_str);
+      is_type_consistent = meshMetadataTypeCheck(
+          declareMeshProperty<std::vector<unsigned int>>(data_name), old_type_str);
       break;
     case typeDouble:
-      is_type_consistent = typeDoubleCheck(declareMeshProperty<double>(data_name), old_type_str);
+      is_type_consistent =
+          meshMetadataTypeCheck(declareMeshProperty<double>(data_name), old_type_str);
       break;
     case typeVectorDouble:
       is_type_consistent =
-          typeDoubleCheck(declareMeshProperty<std::vector<double>>(data_name), old_type_str);
+          meshMetadataTypeCheck(declareMeshProperty<std::vector<double>>(data_name), old_type_str);
       break;
     case typeUnsignedShort:
       is_type_consistent =
-          typeDoubleCheck(declareMeshProperty<unsigned short>(data_name), old_type_str);
+          meshMetadataTypeCheck(declareMeshProperty<unsigned short>(data_name), old_type_str);
       break;
     case typeUnsignedInt:
       is_type_consistent =
-          typeDoubleCheck(declareMeshProperty<unsigned int>(data_name), old_type_str);
+          meshMetadataTypeCheck(declareMeshProperty<unsigned int>(data_name), old_type_str);
       break;
     case typeBool:
-      is_type_consistent = typeDoubleCheck(declareMeshProperty<bool>(data_name), old_type_str);
+      is_type_consistent =
+          meshMetadataTypeCheck(declareMeshProperty<bool>(data_name), old_type_str);
       break;
     case typeUnsignedLongLong:
       is_type_consistent =
-          typeDoubleCheck(declareMeshProperty<unsigned long long>(data_name), old_type_str);
+          meshMetadataTypeCheck(declareMeshProperty<unsigned long long>(data_name), old_type_str);
       break;
     case typeString:
       is_type_consistent =
-          typeDoubleCheck(declareMeshProperty<std::string>(data_name), old_type_str);
+          meshMetadataTypeCheck(declareMeshProperty<std::string>(data_name), old_type_str);
     case typeInt:
-      is_type_consistent = typeDoubleCheck(declareMeshProperty<int>(data_name), old_type_str);
+      is_type_consistent = meshMetadataTypeCheck(declareMeshProperty<int>(data_name), old_type_str);
       break;
     case typePoint:
-      is_type_consistent = typeDoubleCheck(declareMeshProperty<Point>(data_name), old_type_str);
+      is_type_consistent =
+          meshMetadataTypeCheck(declareMeshProperty<Point>(data_name), old_type_str);
       break;
     case typeVectorInt:
       is_type_consistent =
-          typeDoubleCheck(declareMeshProperty<std::vector<int>>(data_name), old_type_str);
+          meshMetadataTypeCheck(declareMeshProperty<std::vector<int>>(data_name), old_type_str);
       break;
     case typeVectorUnsignedShort:
-      is_type_consistent = typeDoubleCheck(
+      is_type_consistent = meshMetadataTypeCheck(
           declareMeshProperty<std::vector<unsigned short>>(data_name), old_type_str);
       break;
     case typeVectorUnsignedLongLong:
-      is_type_consistent = typeDoubleCheck(
+      is_type_consistent = meshMetadataTypeCheck(
           declareMeshProperty<std::vector<unsigned long long>>(data_name), old_type_str);
       break;
     case typeVectorPoint:
       is_type_consistent =
-          typeDoubleCheck(declareMeshProperty<std::vector<Point>>(data_name), old_type_str);
+          meshMetadataTypeCheck(declareMeshProperty<std::vector<Point>>(data_name), old_type_str);
       break;
     case typeVectorVectorDouble:
-      is_type_consistent = typeDoubleCheck(
+      is_type_consistent = meshMetadataTypeCheck(
           declareMeshProperty<std::vector<std::vector<double>>>(data_name), old_type_str);
       break;
     case typeMapStringPairUnsignedShortUnsignedLongLong:
-      is_type_consistent = typeDoubleCheck(
+      is_type_consistent = meshMetadataTypeCheck(
           declareMeshProperty<std::map<std::string, std::pair<unsigned short, unsigned long long>>>(
               data_name),
           old_type_str);
       break;
     case typeShort:
-      is_type_consistent = typeDoubleCheck(declareMeshProperty<short>(data_name), old_type_str);
+      is_type_consistent =
+          meshMetadataTypeCheck(declareMeshProperty<short>(data_name), old_type_str);
       break;
     case typeMapSubdomainIdTypeVectorVectorSubdomainIdType:
-      is_type_consistent = typeDoubleCheck(
+      is_type_consistent = meshMetadataTypeCheck(
           declareMeshProperty<
               std::map<subdomain_id_type, std::vector<std::vector<subdomain_id_type>>>>(data_name),
           old_type_str);
       break;
     case typeMapSubdomainIdTypeVectorVectorString:
-      is_type_consistent = typeDoubleCheck(
+      is_type_consistent = meshMetadataTypeCheck(
           declareMeshProperty<std::map<subdomain_id_type, std::vector<std::vector<std::string>>>>(
               data_name),
           old_type_str);
       break;
     case typeVectorString:
-      is_type_consistent =
-          typeDoubleCheck(declareMeshProperty<std::vector<std::string>>(data_name), old_type_str);
+      is_type_consistent = meshMetadataTypeCheck(
+          declareMeshProperty<std::vector<std::string>>(data_name), old_type_str);
       break;
     case typeVectorVectorShort:
-      is_type_consistent = typeDoubleCheck(
+      is_type_consistent = meshMetadataTypeCheck(
           declareMeshProperty<std::vector<std::vector<short>>>(data_name), old_type_str);
       break;
     case typeVectorVectorString:
-      is_type_consistent = typeDoubleCheck(
+      is_type_consistent = meshMetadataTypeCheck(
           declareMeshProperty<std::vector<std::vector<std::string>>>(data_name), old_type_str);
       break;
     case typeMapBoundaryIDRealVectorValue:
-      is_type_consistent = typeDoubleCheck(
+      is_type_consistent = meshMetadataTypeCheck(
           declareMeshProperty<std::map<BoundaryID, RealVectorValue>>(data_name), old_type_str);
       break;
     default:

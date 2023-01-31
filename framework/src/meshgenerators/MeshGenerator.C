@@ -40,10 +40,8 @@ MeshGenerator::MeshGenerator(const InputParameters & parameters)
         getParam<std::vector<std::string>>("selected_mesh_metadata_to_retain")),
     _retain_all_input_mesh_metadata(getParam<bool>("retain_all_input_mesh_metadata"))
 {
-  checkMeshMetadataForwardingSetting(this,
-                                     isParamValid("input"),
-                                     _retain_all_input_mesh_metadata,
-                                     _selected_mesh_metadata_to_retain);
+  checkMeshMetadataForwardingSetting(
+      isParamValid("input"), _retain_all_input_mesh_metadata, _selected_mesh_metadata_to_retain);
   if (_retain_all_input_mesh_metadata)
     declareAllForwardedMeshMetadata(
         getParam<MeshGeneratorName>("input"), _forwarded_metadata_names, _forwarded_metadata_types);
@@ -173,6 +171,27 @@ MeshGenerator::addMeshSubgenerator(const std::string & generator_name,
   _app.addMeshGenerator(generator_name, name, params);
 
   return this->getMeshByName(name);
+}
+
+void
+MeshGenerator::checkMeshMetadataForwardingSetting(
+    const bool has_input,
+    const bool retain_all_input_mesh_metadata,
+    const std::vector<std::string> selected_mesh_metadata_to_retain)
+{
+  if (!has_input)
+  {
+    if (retain_all_input_mesh_metadata)
+      paramError("retain_all_input_mesh_metadata",
+                 "In the absence of an input mesh, this parameter must not be true.");
+    if (!selected_mesh_metadata_to_retain.empty())
+      paramError("selected_mesh_metadata_to_retain",
+                 "In the absence of an input mesh, this parameter must be empty.");
+  }
+  else if (retain_all_input_mesh_metadata && !selected_mesh_metadata_to_retain.empty())
+    paramError(
+        "selected_mesh_metadata_to_retain",
+        "This parameter should not be provided if retain_all_input_mesh_metadata is set true.");
 }
 
 void
