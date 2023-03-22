@@ -102,7 +102,7 @@ protected:
   bool quasiTriElementsFixer(ReplicatedMesh & mesh,
                              const std::set<subdomain_id_type> subdomain_ids_set,
                              const std::string tri_elem_subdomain_name_suffix = std::string(),
-                             const subdomain_id_type tri_elem_subdomain_shift = 0);
+                             const subdomain_id_type tri_elem_subdomain_shift = Moose::INVALID_BLOCK_ID);
 
   /**
    * Calculates the internal angles of a given 2D element

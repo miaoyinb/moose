@@ -51,7 +51,8 @@ MeshLineCutter::generate()
 
   lineRemover(mesh, _cut_line_params, block_id_to_remove, subdomain_ids_set, 12345);
 
-  mesh.prepare_for_use();
+  if (quasiTriElementsFixer(mesh, subdomain_ids_set))
+    mesh.prepare_for_use();
   return std::move(_input);
 }
 
@@ -70,35 +71,55 @@ MeshLineCutter::lineRemover(ReplicatedMesh & mesh,
   auto bdry_side_list = boundary_info.build_side_list();
   boundary_info.build_node_list_from_side_list();
   auto bdry_node_list = boundary_info.build_node_list();
-  // // collect all the boundary ids
-  // auto all_bdry_ids = boundary_info.get_boundary_ids();
   // Only select the boundaries_to_conform
   std::vector<std::tuple<dof_id_type, unsigned short int, boundary_id_type>> slc_bdry_side_list;
+  // Make a list of elements that belong to a boundary
+  std::set<dof_id_type> elem_with_side;
   for (unsigned int i = 0; i < bdry_side_list.size(); i++)
-    // if (std::get<2>(bdry_side_list[i]) == external_boundary_id)
+  {
+    // Currently, including all the boundaries here instead of a selection of boundaries
+    // This also means that if you want to prevent an interface from skewing, you should assign a
+    // boundary id to id
     slc_bdry_side_list.push_back(bdry_side_list[i]);
+    elem_with_side.emplace(std::get<0>(bdry_side_list[i]));
+  }
 
   // Assign block id for elements to be removed
   for (auto elem_it = mesh.active_elements_begin(); elem_it != mesh.active_elements_end();
        elem_it++)
   {
-    // // use vertex average to determine whether the element needs to be removed
-    // const auto p_x = (*elem_it)->vertex_average()(0);
-    // const auto p_y = (*elem_it)->vertex_average()(1);
-    // if (lineSideDeterminator(p_x, p_y, bdry_pars[0], bdry_pars[1], bdry_pars[2], side_to_remove))
-    //   (*elem_it)->subdomain_id() = block_id_to_remove;
-
-    // use all vertices to determine whether the element needs to be removed
+    bool needRetained = true;
     bool needRemoved = true;
     for (unsigned int i = 0; i < (*elem_it)->n_vertices(); i++)
-      needRemoved = needRemoved && lineSideDeterminator((*elem_it)->point(i)(0),
-                                                        (*elem_it)->point(i)(1),
-                                                        bdry_pars[0],
-                                                        bdry_pars[1],
-                                                        bdry_pars[2],
-                                                        side_to_remove);
+    {
+      const bool lineSide = lineSideDeterminator((*elem_it)->point(i)(0),
+                                                 (*elem_it)->point(i)(1),
+                                                 bdry_pars[0],
+                                                 bdry_pars[1],
+                                                 bdry_pars[2],
+                                                 side_to_remove);
+      needRemoved = needRemoved && lineSide;
+      needRetained = needRetained && !lineSide;
+    }
+
     if (needRemoved)
       (*elem_it)->subdomain_id() = block_id_to_remove;
+    else if (!needRetained && (*elem_it)->n_vertices() > 3)
+    {
+      // if the cutting line crosses an element. We would like to retain it if
+      // (1) its average vertices position is on the retaining side of line; or
+      // (2) the element has a side involved in the side list; or
+      // (3) it is a TRI element.
+      const auto avg_vertices = (*elem_it)->vertex_average();
+      if (lineSideDeterminator(avg_vertices(0),
+                               avg_vertices(1),
+                               bdry_pars[0],
+                               bdry_pars[1],
+                               bdry_pars[2],
+                               side_to_remove))
+        if (elem_with_side.find((*elem_it)->id()) == elem_with_side.end())
+          (*elem_it)->subdomain_id() = block_id_to_remove;
+    }
   }
 
   // Identify the nodes near the boundary
@@ -231,7 +252,9 @@ MeshLineCutter::lineRemover(ReplicatedMesh & mesh,
   mesh.contract();
   mesh.find_neighbors();
   // Delete zero volume elements
-  for (auto elem_it = mesh.elements_begin(); elem_it != mesh.elements_end(); elem_it++)
+  std::vector<dof_id_type> zero_vol_elems;
+  for (auto elem_it = mesh.active_elements_begin(); elem_it != mesh.active_elements_end();
+       elem_it++)
   {
     if (MooseUtils::absoluteFuzzyEqual((*elem_it)->volume(), 0.0))
     {
@@ -239,24 +262,20 @@ MeshLineCutter::lineRemover(ReplicatedMesh & mesh,
       {
         if ((*elem_it)->neighbor_ptr(i) != nullptr)
         {
-          auto tmp_elem = (*elem_it)->neighbor_ptr(i);
-          for (unsigned int j = 0; j < tmp_elem->n_sides(); j++)
-          {
-            if (tmp_elem->neighbor_ptr(j) != nullptr)
-            {
-              if (tmp_elem->neighbor_ptr(j)->id() == (*elem_it)->id())
-              {
-                if (assign_ext_to_new)
-                  boundary_info.add_side(tmp_elem, j, external_boundary_id);
-                boundary_info.add_side(tmp_elem, j, trimming_section_boundary_id);
-              }
-            }
-          }
+          boundary_info.add_side((*elem_it)->neighbor_ptr(i),
+                                 ((*elem_it)->neighbor_ptr(i))->which_neighbor_am_i(*elem_it),
+                                 external_boundary_id);
+          boundary_info.add_side((*elem_it)->neighbor_ptr(i),
+                                 ((*elem_it)->neighbor_ptr(i))->which_neighbor_am_i(*elem_it),
+                                 trimming_section_boundary_id);
         }
       }
-      mesh.delete_elem(*elem_it);
+      zero_vol_elems.push_back((*elem_it)->id());
     }
   }
+  for (const auto & zero_vol_elem : zero_vol_elems)
+    mesh.delete_elem(mesh.elem_ptr(zero_vol_elem));
+
   mesh.contract();
   mesh.prepare_for_use();
 }
@@ -311,8 +330,12 @@ MeshLineCutter::quasiTriElementsFixer(ReplicatedMesh & mesh,
   for (auto & elem : as_range(mesh.active_elements_begin(), mesh.active_elements_end()))
   {
     const auto elem_angles = vertex_angles(*elem);
+    // Bad element type 1 is a quasi-tri element with a node in the middle of a side of the triangle
     if (MooseUtils::absoluteFuzzyEqual(elem_angles.front().first, M_PI, 0.001))
       bad_elems_rec.push_back(std::make_tuple(elem, elem_angles.front().second, false));
+    // Bad element type 2 is a quasi-tri element with a node outside the triangle
+    else if (MooseUtils::absoluteFuzzyEqual(elem_angles.back().first, 0.0, 0.001))
+      bad_elems_rec.push_back(std::make_tuple(elem, elem_angles.back().second, false));
   }
   std::set<subdomain_id_type> new_subdomain_ids;
   // Loop over all the identified degenerate QUAD elements
