@@ -77,6 +77,34 @@ AzimuthalBlockSplitGenerator::generate()
 
   ReplicatedMesh & mesh = *replicated_mesh_ptr;
 
+  // Check the order of the input mesh's elements
+  // Meanwhile, record the vertex average of each element for future comprison
+  unsigned short order = 0;
+  std::map<dof_id_type, Point> vertex_avgs;
+  for (const auto & elem : mesh.element_ptr_range())
+  {
+    switch (elem->type())
+    {
+      case TRI3:
+      case QUAD4:
+        if (order == 2)
+          paramError("input", "This mesh contains elements of different orders.");
+        order = 1;
+        break;
+      case TRI6:
+      case TRI7:
+      case QUAD8:
+      case QUAD9:
+        if (order == 1)
+          paramError("input", "This mesh contains elements of different orders.");
+        order = 2;
+        break;
+      default:
+        paramError("input", "This mesh contains elements of unsupported type.");
+    }
+    vertex_avgs[elem->id()] = elem->vertex_average();
+  }
+
   _old_block_ids =
       MooseMeshUtils::getSubdomainIDs(mesh, getParam<std::vector<SubdomainName>>("old_blocks"));
   if (_old_block_ids.size() != _new_block_ids.size())
@@ -101,7 +129,23 @@ AzimuthalBlockSplitGenerator::generate()
         "is currently not supported in this case.");
 
   MeshTools::Modification::rotate(mesh, 90.0, 0.0, 0.0);
-  _azimuthal_angle_meta = azimuthalAnglesCollector(mesh, -180.0, 180.0, ANGLE_DEGREE);
+  auto azimuthal_angles_raw = azimuthalAnglesCollector(mesh, -180.0, 180.0, ANGLE_DEGREE);
+
+  std::vector<Real> azimuthal_angle_mpt;
+  if (order == 1)
+    _azimuthal_angle_meta = azimuthalAnglesCollector(mesh, -180.0, 180.0, ANGLE_DEGREE);
+  else
+  {
+    auto azimuthal_angles_raw = azimuthalAnglesCollector(mesh, -180.0, 180.0, ANGLE_DEGREE);
+    for (const auto & i : make_range(azimuthal_angles_raw.size()))
+    {
+      if (i % 2 == 0)
+        azimuthal_angle_mpt.push_back(azimuthal_angles_raw[i]);
+      else
+        _azimuthal_angle_meta.push_back(azimuthal_angles_raw[i]);
+    }
+  }
+
   // So that this class works for both derived classes of PolygonMeshGeneratorBase
   auto pattern_pitch_meta = std::max(getMeshProperty<Real>("pitch_meta", _input_name),
                                      getMeshProperty<Real>("pattern_pitch_meta", _input_name));
@@ -269,6 +313,46 @@ AzimuthalBlockSplitGenerator::generate()
       *std::max_element(circular_rad_list.begin(), circular_rad_list.end());
   const Real min_non_circular_radius =
       *std::min_element(non_circular_rad_list.begin(), non_circular_rad_list.end());
+
+  // Before re-correcting the radii, correct the mid-point of the elements that are altered
+  if (order == 2)
+    for (const auto & elem : mesh.element_ptr_range())
+    {
+      const Point & original_vertex_avg = vertex_avgs[elem->id()];
+      const Point & new_vertex_avg = elem->vertex_average();
+      if (MooseUtils::absoluteFuzzyGreaterThan((original_vertex_avg-new_vertex_avg).norm(),0.0))
+      {
+        switch (elem->type())
+        {
+          case TRI6:
+            *elem->node_ptr(3) = (*elem->node_ptr(0) + *elem->node_ptr(1))/2.0;
+            *elem->node_ptr(4) = (*elem->node_ptr(1) + *elem->node_ptr(2))/2.0;
+            *elem->node_ptr(5) = (*elem->node_ptr(2) + *elem->node_ptr(0))/2.0;
+            break;
+          case TRI7:
+            *elem->node_ptr(3) = (*elem->node_ptr(0) + *elem->node_ptr(1))/2.0;
+            *elem->node_ptr(4) = (*elem->node_ptr(1) + *elem->node_ptr(2))/2.0;
+            *elem->node_ptr(5) = (*elem->node_ptr(2) + *elem->node_ptr(0))/2.0;
+            *elem->node_ptr(6) = (*elem->node_ptr(0) + *elem->node_ptr(1) + *elem->node_ptr(2))/3.0;
+            break;
+          case QUAD8:
+            *elem->node_ptr(4) = (*elem->node_ptr(0) + *elem->node_ptr(1))/2.0;
+            *elem->node_ptr(5) = (*elem->node_ptr(1) + *elem->node_ptr(2))/2.0;
+            *elem->node_ptr(6) = (*elem->node_ptr(2) + *elem->node_ptr(3))/2.0;
+            *elem->node_ptr(7) = (*elem->node_ptr(3) + *elem->node_ptr(0))/2.0;
+            break;
+          case QUAD9:
+            *elem->node_ptr(4) = (*elem->node_ptr(0) + *elem->node_ptr(1))/2.0;
+            *elem->node_ptr(5) = (*elem->node_ptr(1) + *elem->node_ptr(2))/2.0;
+            *elem->node_ptr(6) = (*elem->node_ptr(2) + *elem->node_ptr(3))/2.0;
+            *elem->node_ptr(7) = (*elem->node_ptr(3) + *elem->node_ptr(0))/2.0;
+            *elem->node_ptr(8) = (*elem->node_ptr(0) + *elem->node_ptr(1) + *elem->node_ptr(2) + *elem->node_ptr(3))/4.0;
+            break;
+          default:
+            mooseError("unsupported element type");
+        }
+      }
+    }
 
   // Re-correct Radii
   if (_preserve_volumes)
