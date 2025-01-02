@@ -25,6 +25,9 @@ BoundaryPartitionGenerator::validParams()
   params.addRequiredParam<MeshGeneratorName>("input", "The mesh we want to modify");
   params.addRequiredParam<std::vector<BoundaryName>>("boundary_names",
                                                      "The boundaries to be partitioned");
+  params.addParam<bool>("further_partition_separate_boundaries",
+                        false,
+                        "Whether to further partition the separate boundaries");
 
   return params;
 }
@@ -32,7 +35,8 @@ BoundaryPartitionGenerator::validParams()
 BoundaryPartitionGenerator::BoundaryPartitionGenerator(const InputParameters & parameters)
   : MeshGenerator(parameters),
     _input(getMesh("input")),
-    _boundary_names(getParam<std::vector<BoundaryName>>("boundary_names"))
+    _boundary_names(getParam<std::vector<BoundaryName>>("boundary_names")),
+    _further_partition_separate_boundaries(getParam<bool>("further_partition_separate_boundaries"))
 {
 }
 
@@ -73,6 +77,10 @@ BoundaryPartitionGenerator::generate()
     new_boundary_names.push_back(_name + "_boundary_" + std::to_string(i));
   }
   auto new_boundary_ids = MooseMeshUtils::getBoundaryIDs(*mesh, new_boundary_names, true);
+  for (unsigned int i = 0; i < new_boundary_ids.size(); i++)
+  {
+    mesh->get_boundary_info().sideset_name(new_boundary_ids[i]) = new_boundary_names[i];
+  }
 
   for (const auto & side : selected_bc_info)
   {
@@ -88,6 +96,65 @@ BoundaryPartitionGenerator::generate()
     const auto side_index = getClosestDirection(side_normal);
 
     mesh->get_boundary_info().add_side(el, sl, new_boundary_ids[side_index]);
+  }
+
+  if (_further_partition_separate_boundaries)
+  {
+    // record the current available boundary id
+    auto max_boundary_id = MooseMeshUtils::getNextFreeBoundaryID(*mesh);
+    // record all the sides info
+    const auto sides_info = mesh->get_boundary_info().build_side_list();
+    // select the sidesets of interest
+    std::vector<std::vector<std::pair<dof_id_type, unsigned short int>>> selected_bc_info;
+    selected_bc_info.resize(new_boundary_ids.size());
+    for (const auto & bc_tuple : sides_info)
+    {
+      const auto & el = std::get<0>(bc_tuple);
+      const auto & sl = std::get<1>(bc_tuple);
+      const auto & bl = std::get<2>(bc_tuple);
+      const auto it = std::find(new_boundary_ids.begin(), new_boundary_ids.end(), bl);
+      if (it != new_boundary_ids.end())
+      {
+        const auto index = std::distance(new_boundary_ids.begin(), it);
+        selected_bc_info[index].push_back(std::make_pair(el, sl));
+      }
+    }
+
+    // To facilitate partitioning, we will make lower dimensional blocks based on the selected sides
+    dof_id_type max_elem_id = mesh->max_elem_id();
+    unique_id_type max_unique_id = mesh->parallel_max_unique_id();
+    const auto new_block_id = MooseMeshUtils::getNextFreeSubdomainID(*mesh);
+    unsigned int nelem_ct = 0;
+    for (unsigned int i = 0; i < selected_bc_info.size(); i++)
+    {
+      for (auto & [eid, sid] : selected_bc_info[i])
+      {
+        Elem * elem = mesh->elem_ptr(eid);
+
+        const auto side = sid;
+
+        // Build a non-proxy element from this side.
+        std::unique_ptr<Elem> side_elem(elem->build_side_ptr(side, /*proxy=*/false));
+
+        // The side will be added with the same processor id as the parent.
+        side_elem->processor_id() = elem->processor_id();
+
+        // Add subdomain ID, TRI and QUAD will need to have different ids
+        side_elem->subdomain_id() = new_block_id + (side_elem->n_vertices() - 3) + i * 2;
+
+        // Also assign the side's interior parent, so it is always
+        // easy to figure out the Elem we came from.
+        side_elem->set_interior_parent(elem);
+
+        // Add id
+        nelem_ct++;
+        side_elem->set_id(max_elem_id + nelem_ct);
+        side_elem->set_unique_id(max_unique_id + nelem_ct);
+
+        // Finally, add the lower-dimensional element to the Mesh.
+        mesh->add_elem(side_elem.release());
+      }
+    }
   }
 
   mesh->set_isnt_prepared();
@@ -115,7 +182,7 @@ BoundaryPartitionGenerator::getClosestDirection(const Point & pt)
       Point(-0.1876, 0.7947, 0.5774),         Point(-0.6071, 0.7947, 0.0000),
       Point(-0.1876, 0.7947, -0.5774),        Point(0.4911, 0.7947, -0.3568)};
   std::vector<Real> dot_products(32);
-  for (unsigned short i = 0; i < 32; i++)
+  for (unsigned short i = 0; i < norm_vectors.size(); i++)
   {
     dot_products[i] = pt * norm_vectors[i];
   }
