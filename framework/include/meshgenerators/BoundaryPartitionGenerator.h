@@ -25,7 +25,8 @@ protected:
   std::unique_ptr<MeshBase> & _input;
   ///The boundaries to be removed
   const std::vector<BoundaryName> _boundary_names;
-
+  ///Whether to further partition the separate boundaries
+  const bool _further_partition_separate_boundaries;
   /**
    *
    */
