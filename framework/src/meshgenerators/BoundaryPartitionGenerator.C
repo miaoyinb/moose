@@ -100,8 +100,6 @@ BoundaryPartitionGenerator::generate()
 
   if (_further_partition_separate_boundaries)
   {
-    // record the current available boundary id
-    auto max_boundary_id = MooseMeshUtils::getNextFreeBoundaryID(*mesh);
     // record all the sides info
     const auto sides_info = mesh->get_boundary_info().build_side_list();
     // select the sidesets of interest
@@ -121,12 +119,15 @@ BoundaryPartitionGenerator::generate()
     }
 
     // To facilitate partitioning, we will make lower dimensional blocks based on the selected sides
-    dof_id_type max_elem_id = mesh->max_elem_id();
-    unique_id_type max_unique_id = mesh->parallel_max_unique_id();
-    const auto new_block_id = MooseMeshUtils::getNextFreeSubdomainID(*mesh);
+    auto mesh_face = buildMeshBaseObject();
+    mesh_face->set_mesh_dimension(3);
     unsigned int nelem_ct = 0;
+    std::map<dof_id_type, std::pair<dof_id_type, unsigned short int>> side_to_elem;
+    // Another map to store if an element has been processed
+    std::vector<std::map<dof_id_type, bool>> elem_processed_array(selected_bc_info.size());
     for (unsigned int i = 0; i < selected_bc_info.size(); i++)
     {
+      auto & elem_processed = elem_processed_array[i];
       for (auto & [eid, sid] : selected_bc_info[i])
       {
         Elem * elem = mesh->elem_ptr(eid);
@@ -136,28 +137,101 @@ BoundaryPartitionGenerator::generate()
         // Build a non-proxy element from this side.
         std::unique_ptr<Elem> side_elem(elem->build_side_ptr(side, /*proxy=*/false));
 
-        // The side will be added with the same processor id as the parent.
-        side_elem->processor_id() = elem->processor_id();
-
         // Add subdomain ID, TRI and QUAD will need to have different ids
-        side_elem->subdomain_id() = new_block_id + (side_elem->n_vertices() - 3) + i * 2;
-
-        // Also assign the side's interior parent, so it is always
-        // easy to figure out the Elem we came from.
-        side_elem->set_interior_parent(elem);
+        side_elem->subdomain_id() = 1 + (side_elem->n_vertices() - 3) + i * 2;
 
         // Add id
         nelem_ct++;
-        side_elem->set_id(max_elem_id + nelem_ct);
-        side_elem->set_unique_id(max_unique_id + nelem_ct);
+        side_elem->set_id(nelem_ct);
+        side_elem->set_unique_id(nelem_ct);
+        side_to_elem[side_elem->id()] = std::make_pair(eid, sid);
+        elem_processed[eid] = false;
 
         // Finally, add the lower-dimensional element to the Mesh.
-        mesh->add_elem(side_elem.release());
+        mesh_face->add_elem(side_elem.release());
+      }
+    }
+
+    mesh_face->find_neighbors();
+
+    std::vector<std::vector<std::vector<dof_id_type>>> surf_elem_recorder_array(
+        selected_bc_info.size());
+    for (unsigned int i = 0; i < selected_bc_info.size(); i++)
+    {
+      std::set<subdomain_id_type> block_ids{static_cast<subdomain_id_type>(1 + i * 2),
+                                            static_cast<subdomain_id_type>(2 + i * 2)};
+      auto & elem_processed = elem_processed_array[i];
+      auto & surf_elem_recorder = surf_elem_recorder_array[i];
+      unsigned int num_assigned = 0;
+      for (auto elem_it = mesh_face->active_subdomain_set_elements_begin(block_ids);
+           elem_it != mesh_face->active_subdomain_set_elements_end(block_ids);
+           ++elem_it)
+      {
+        Elem * elem = *elem_it;
+        if (!elem_processed[elem->id()])
+        {
+          surf_elem_recorder.push_back(std::vector<dof_id_type>());
+          surf_elem_recorder.back().push_back(elem->id());
+          unsigned int ser_it = 0;
+          while (ser_it < surf_elem_recorder.back().size())
+          {
+            auto ser = surf_elem_recorder.back()[ser_it];
+            if (!elem_processed[ser])
+            {
+              elem_processed[ser] = true;
+              for (unsigned int s = 0; s < mesh_face->elem_ptr(ser)->n_sides(); s++)
+              {
+                if (mesh_face->elem_ptr(ser)->neighbor_ptr(s) != nullptr)
+                {
+                  if (mesh_face->elem_ptr(ser)->neighbor_ptr(s)->subdomain_id() == 1 + i * 2 ||
+                      mesh_face->elem_ptr(ser)->neighbor_ptr(s)->subdomain_id() == 2 + i * 2)
+                  {
+                    if (std::find(surf_elem_recorder.back().begin(),
+                                  surf_elem_recorder.back().end(),
+                                  mesh_face->elem_ptr(ser)->neighbor_ptr(s)->id()) ==
+                        surf_elem_recorder.back().end())
+                    {
+                      surf_elem_recorder.back().push_back(
+                          mesh_face->elem_ptr(ser)->neighbor_ptr(s)->id());
+                    }
+                  }
+                }
+              }
+            }
+            ser_it++;
+          }
+        }
+      }
+    }
+
+    // Use surf_elem_recorder_array and side_to_elem to define new boundaries
+    // First, let's remove the old boundaries
+    for (const auto & nbid : new_boundary_ids)
+    {
+      mesh->get_boundary_info().remove_id(nbid);
+    }
+    // Now, let's add the new boundaries
+    // record the current available boundary id
+    auto max_boundary_id = MooseMeshUtils::getNextFreeBoundaryID(*mesh);
+    for (const auto & i : index_range(surf_elem_recorder_array))
+    {
+      const auto & surf_elem_recorder = surf_elem_recorder_array[i];
+      for (const auto & j : index_range(surf_elem_recorder))
+      {
+        const auto & surf_elem = surf_elem_recorder[j];
+        for (const auto & elem_id : surf_elem)
+        {
+          const auto [eid, sid] = side_to_elem[elem_id];
+          mesh->get_boundary_info().add_side(eid, sid, max_boundary_id);
+        }
+        mesh->get_boundary_info().sideset_name(max_boundary_id) =
+            new_boundary_names[i] + "_" + std::to_string(j);
+        max_boundary_id++;
       }
     }
   }
-
   mesh->set_isnt_prepared();
+
   return dynamic_pointer_cast<MeshBase>(mesh);
 }
 
