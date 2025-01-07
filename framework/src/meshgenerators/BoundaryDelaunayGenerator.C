@@ -25,6 +25,28 @@ BoundaryDelaunayGenerator::validParams()
   params.addClassDescription("Mesh generator which removes side sets");
   params.addRequiredParam<MeshGeneratorName>("input", "The mesh we want to modify");
   params.addRequiredParam<std::vector<BoundaryName>>("boundary_names", "The boundaries to be used");
+  // XYDelaunay parameters
+  params.addParam<bool>("use_auto_area_func",
+                        false,
+                        "Use the automatic area function for the triangle meshing region.");
+  params.addParam<Real>(
+      "auto_area_func_default_size",
+      0,
+      "Background size for automatic area function, or 0 to use non background size");
+  params.addParam<Real>("auto_area_func_default_size_dist",
+                        -1.0,
+                        "Effective distance of background size for automatic area "
+                        "function, or negative to use non background size");
+  params.addParam<unsigned int>("auto_area_function_num_points",
+                                10,
+                                "Maximum number of nearest points used for the inverse distance "
+                                "interpolation algorithm for automatic area function calculation.");
+  params.addRangeCheckedParam<Real>(
+      "auto_area_function_power",
+      1.0,
+      "auto_area_function_power>0",
+      "Polynomial power of the inverse distance interpolation algorithm for automatic area "
+      "function calculation.");
 
   return params;
 }
@@ -32,7 +54,12 @@ BoundaryDelaunayGenerator::validParams()
 BoundaryDelaunayGenerator::BoundaryDelaunayGenerator(const InputParameters & parameters)
   : MeshGenerator(parameters),
     _input(getParam<MeshGeneratorName>("input")),
-    _boundary_names(getParam<std::vector<BoundaryName>>("boundary_names"))
+    _boundary_names(getParam<std::vector<BoundaryName>>("boundary_names")),
+    _use_auto_area_func(getParam<bool>("use_auto_area_func")),
+    _auto_area_func_default_size(getParam<Real>("auto_area_func_default_size")),
+    _auto_area_func_default_size_dist(getParam<Real>("auto_area_func_default_size_dist")),
+    _auto_area_function_num_points(getParam<unsigned int>("auto_area_function_num_points")),
+    _auto_area_function_power(getParam<Real>("auto_area_function_power"))
 {
   declareMeshForSub("input");
 
@@ -63,13 +90,32 @@ BoundaryDelaunayGenerator::BoundaryDelaunayGenerator(const InputParameters & par
     addMeshSubgenerator("SideSetsAroundSubdomainGenerator", _name + "_2d_mesh_ext", params);
   }
 
+  {
+    auto params = _app.getFactory().getValidParams("LowerDBlockFromSidesetGenerator");
+    params.set<MeshGeneratorName>("input") = _name + "_2d_mesh_ext";
+    params.set<SubdomainID>("new_block_id") = 1000;
+    params.set<std::vector<BoundaryName>>("sidesets") = {(BoundaryName)(_name + "_2d_mesh_ext")};
+
+    addMeshSubgenerator("LowerDBlockFromSidesetGenerator", _name + "_2d_mesh_ext_block", params);
+  }
+
+  {
+    auto params = _app.getFactory().getValidParams("BlockToMeshConverterGenerator");
+    params.set<MeshGeneratorName>("input") = _name + "_2d_mesh_ext_block";
+    params.set<std::vector<SubdomainName>>("target_blocks") = {(SubdomainName)("1000")};
+
+    addMeshSubgenerator("BlockToMeshConverterGenerator", _name + "_1d_mesh", params);
+  }
+
   _2d_mesh = &getMeshByName(_name + "_2d_mesh_ext");
+  _1d_mesh = &getMeshByName(_name + "_1d_mesh");
 }
 
 std::unique_ptr<MeshBase>
 BoundaryDelaunayGenerator::generate()
 {
   auto & mesh_in = *_2d_mesh;
+  auto & mesh_1d = *_1d_mesh;
 
   mesh_in->prepare_for_use();
   // Centroid
@@ -92,6 +138,8 @@ BoundaryDelaunayGenerator::generate()
 
   // Move the mesh to the centroid
   MeshTools::Modification::translate(*mesh_in, -centroid(0), -centroid(1), -centroid(2));
+  MeshTools::Modification::translate(*mesh_1d, -centroid(0), -centroid(1), -centroid(2));
+
   const Real theta = std::acos(mesh_norm(2)) / M_PI * 180.0;
   const Real phi =
       (MooseUtils::absoluteFuzzyLessThan(mesh_norm(2), 1.0) ? std::atan2(mesh_norm(1), mesh_norm(0))
@@ -99,6 +147,7 @@ BoundaryDelaunayGenerator::generate()
       M_PI * 180.0;
   // TO figure out euler angles based on the normal vector
   MeshTools::Modification::rotate(*mesh_in, 90.0 - phi, theta, 0.0);
+  MeshTools::Modification::rotate(*mesh_1d, 90.0 - phi, theta, 0.0);
 
   // // Store all the nodes z(x,y)
   // std::vector<Point> mod_pts;
@@ -126,24 +175,34 @@ BoundaryDelaunayGenerator::generate()
   // "project" the mesh to the xy-plane
   for (const auto & node : mesh_in->node_ptr_range())
     (*node)(2) = 0;
+  // "project" the 1d mesh too
+  for (const auto & node : mesh_1d->node_ptr_range())
+    (*node)(2) = 0;
 
-  auto mesh_in_xy = dynamic_pointer_cast<MeshBase>(mesh_in->clone());
+  auto mesh_in_xy = dynamic_pointer_cast<MeshBase>(std::move(mesh_in));
 
   std::unique_ptr<UnstructuredMesh> mesh =
-      dynamic_pointer_cast<UnstructuredMesh>(std::move(mesh_in));
+      dynamic_pointer_cast<UnstructuredMesh>(std::move(mesh_1d));
 
   Poly2TriTriangulator poly2tri(*mesh);
   poly2tri.triangulation_type() = TriangulatorInterface::PSLG;
-  // poly2tri.set_outer_boundary_ids(
-  //     {static_cast<unsigned long>(MooseMeshUtils::getBoundaryID(_name + "_2d_mesh_ext",
-  //     *mesh))});
+
+  // std::set<std::size_t> bdy_ids;
+  // bdy_ids.emplace(MooseMeshUtils::getBoundaryID(_name + "_2d_mesh_ext", *mesh));
+  // poly2tri.set_outer_boundary_ids(bdy_ids);
+
   poly2tri.set_interpolate_boundary_points(0);
   poly2tri.set_refine_boundary_allowed(false);
   poly2tri.set_verify_hole_boundaries(false);
   poly2tri.desired_area() = 0;
   poly2tri.minimum_angle() = 0; // Not yet supported
   poly2tri.smooth_after_generating() = false;
-  poly2tri.set_auto_area_function(this->comm(), 8, 2, 0.0, -1.0);
+  if (_use_auto_area_func)
+    poly2tri.set_auto_area_function(this->comm(),
+                                    _auto_area_function_num_points,
+                                    _auto_area_function_power,
+                                    _auto_area_func_default_size,
+                                    _auto_area_func_default_size_dist);
   poly2tri.triangulate();
 
   // // Move the nodes back to the original z(x,y)
