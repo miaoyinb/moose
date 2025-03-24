@@ -69,6 +69,10 @@ XYZDelaunayGenerator::validParams()
       "holes", std::vector<MeshGeneratorName>(), "The MeshGenerators that define mesh holes.");
   params.addParam<std::vector<bool>>(
       "stitch_holes", std::vector<bool>(), "Whether to stitch to the mesh defining each hole.");
+  params.addParam<bool>("convert_holes_for_stitching",
+                        false,
+                        "Whether to convert 3D hole meshes with non-TRI3 surface elements into "
+                        "all-TET4 meshes to facilitate stitching.");
 
   params.addRangeCheckedParam<Real>(
       "desired_volume",
@@ -97,6 +101,7 @@ XYZDelaunayGenerator::XYZDelaunayGenerator(const InputParameters & parameters)
     _smooth_tri(getParam<bool>("smooth_triangulation")),
     _hole_ptrs(getMeshes("holes")),
     _stitch_holes(getParam<std::vector<bool>>("stitch_holes")),
+    _convert_holes_for_stitching(getParam<bool>("convert_holes_for_stitching")),
     _algorithm(parameters.get<MooseEnum>("algorithm")),
     _verbose_stitching(parameters.get<bool>("verbose_stitching"))
 {
@@ -148,6 +153,68 @@ XYZDelaunayGenerator::generate()
     ngint.attach_hole_list(std::move(ngholes));
 
   ngint.triangulate();
+
+  // Here, the hole meshes that are needed for Netgen have been taken by Netgen
+  // The hole meshes will still be used for hole boundary identification and
+  // optionally for stitching
+  // if a hole mesh is a 2D surface mesh in 3D
+  // it needs to be converted into purely TRI elements
+  // and it cannot be used for stitching
+  // if a hole mesh is a 3D volume mesh
+  // If it has non-TRI elements on the surface, it cannot be used for stitching
+  // But it can be converted into a TET mesh to support hole boundary identification
+  for (auto hole_i : index_range(_hole_ptrs))
+  {
+    UnstructuredMesh & hole_mesh = dynamic_cast<UnstructuredMesh &>(**_hole_ptrs[hole_i]);
+    libMesh::MeshSerializer serial_hole(hole_mesh);
+    // Check the dimension of the hole mesh
+    std::set<ElemType> hole_elem_types;
+    std::set<unsigned short> hole_elem_dims;
+    for (auto elem : hole_mesh.element_ptr_range())
+    {
+      hole_elem_dims.emplace(elem->dim());
+
+      // For 3D element, we need to check the surface side element type instead of the element type
+      if (elem->dim() == 3)
+        for (auto s : make_range(elem->n_sides()))
+        {
+          if (!elem->neighbor_ptr(s))
+            hole_elem_types.emplace(elem->side_ptr(s)->type());
+          // For 2D element, we just need to record the element type
+          // For other dimensions, we just record them here, but an error will be thrown later
+          else
+            hole_elem_types.emplace(elem->type());
+        }
+    }
+    if (hole_elem_dims.size() != 1)
+      paramError("holes", "All elements in a hole mesh must have the same dimension (2D or 3D).");
+    else if (*hole_elem_dims.begin() == 3)
+    {
+      // For 3D meshes, if there are non-TRI3 surface side elements
+      // (1) if no stitching is needed, we can just convert the whole mesh into TET to facilitate
+      // boundary identification (2) if stitching is needed, we can still convert and stitch, but
+      // that would modify the input hole mesh
+      if (*hole_elem_types.begin() != ElemType::TRI3)
+      {
+        if (_stitch_holes.size() && _stitch_holes[hole_i] && !_convert_holes_for_stitching)
+          paramError("holes",
+                     "3D hole meshes with non-TRI3 surface elements cannot be stitched without "
+                     "converting them to TET4.");
+        else
+          MeshTools::Modification::all_tri(**_hole_ptrs[hole_i]);
+      }
+    }
+    else if (*hole_elem_dims.begin() == 2)
+    {
+      // 2D hole meshes cannot be stitched to the 3D Netgen mesh
+      if (_stitch_holes.size() && _stitch_holes[hole_i])
+        paramError("holes", "2D hole meshes cannot be stitched.");
+      if (hole_elem_types.size() != 1 || *hole_elem_types.begin() != ElemType::TRI3)
+        MeshTools::Modification::all_tri(**_hole_ptrs[hole_i]);
+    }
+    else
+      paramError("holes", "All elements in a hole mesh must be either 2D or 3D.");
+  }
 
   if (isParamValid("output_subdomain_name"))
   {
