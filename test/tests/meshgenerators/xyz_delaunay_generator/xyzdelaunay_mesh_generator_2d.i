@@ -13,9 +13,21 @@
     y_function = "y"
     z_function = "z+x*y*z"
   []
+  [2d_block]
+    type = LowerDBlockFromSidesetGenerator
+    input = outer_bdy
+    sidesets = 'top bottom left right front back'
+    new_block_id = 100
+    new_block_name = 'surface'
+  []
+  [2d_mesh]
+    type = BlockToMeshConverterGenerator
+    input = 2d_block
+    target_blocks = 'surface'
+  []
   [triang]
     type = XYZDelaunayGenerator
-    boundary = 'outer_bdy'
+    boundary = '2d_mesh'
     # Let NetGen know interior points are okay
     desired_volume = 100000
   []
@@ -36,5 +48,8 @@
 []
 
 [Outputs]
-  csv = true
+  [output]
+    type = CSV
+    file_base = 'xyzdelaunay_mesh_generator_out'
+  []
 []

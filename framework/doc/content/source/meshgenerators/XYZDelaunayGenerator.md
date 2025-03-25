@@ -16,6 +16,14 @@ can define a closed manifold of boundary triangles either by including
 Tri3 elements for each triangle or by including volume elements whose
 external faces comprise the boundary manifold.
 
+If the [!param](/Mesh/XYZDelaunayGenerator/boundary) input mesh contains
+volume elements with non-Tri3 surface sides or non-Tri3 surface elements,
+they can be converted automatically by this mesh generator.
+
+If one of the [!param](/Mesh/XYZDelaunayGenerator/holes) meshes contains
+non-Tet4 volume elements or non-Tri3 surface elements, it can also be converted
+automatically by this mesh generator.
+
 If multiple disconnected manifolds exist in a boundary mesh, only the
 manifold enclosing the rest of the mesh is considered to be "the"
 boundary.  Input meshes which are not connected, which therefore have
@@ -26,7 +34,12 @@ expansions of this class may allow such nodes to be retained as nodes
 in the output tetrahedralization.
 
 Using stitching options, meshes used as "holes" can subsequently be
-stitched into those portions of the output mesh.
+stitched into those portions of the output mesh. However, any hole meshes
+that contain 2D surface elements cannot be stitched. Also, if a hole mesh
+contains volume elements with non-Tri3 surface sides, it cannot be stitched
+with the output mesh without modifications. 
+[!param](/Mesh/XYZDelaunayGenerator/convert_holes_for_stitching) needs to
+be set as `true` to allow the stitching of such hole meshes after modifications.
 
 Interior vertices can be adjusted after mesh generation using the
 [!param](/Mesh/XYZDelaunayGenerator/smooth_triangulation) parameter,

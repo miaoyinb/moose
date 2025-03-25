@@ -163,6 +163,7 @@ XYZDelaunayGenerator::generate()
   // if a hole mesh is a 3D volume mesh
   // If it has non-TRI elements on the surface, it cannot be used for stitching
   // But it can be converted into a TET mesh to support hole boundary identification
+  std::vector<bool> hole_mesh_2d(_hole_ptrs.size());
   for (auto hole_i : index_range(_hole_ptrs))
   {
     UnstructuredMesh & hole_mesh = dynamic_cast<UnstructuredMesh &>(**_hole_ptrs[hole_i]);
@@ -174,17 +175,17 @@ XYZDelaunayGenerator::generate()
     {
       hole_elem_dims.emplace(elem->dim());
 
-      // For 3D element, we need to check the surface side element type instead of the element type
+      // For a 3D element, we need to check the surface side element type instead of the element type
       if (elem->dim() == 3)
         for (auto s : make_range(elem->n_sides()))
         {
           if (!elem->neighbor_ptr(s))
             hole_elem_types.emplace(elem->side_ptr(s)->type());
-          // For 2D element, we just need to record the element type
-          // For other dimensions, we just record them here, but an error will be thrown later
-          else
-            hole_elem_types.emplace(elem->type());
         }
+      // For a 2D element, we just need to record the element type
+      // For other dimensions, we just record them here, but an error will be thrown later
+      else
+        hole_elem_types.emplace(elem->type());
     }
     if (hole_elem_dims.size() != 1)
       paramError("holes", "All elements in a hole mesh must have the same dimension (2D or 3D).");
@@ -203,6 +204,7 @@ XYZDelaunayGenerator::generate()
         else
           MeshTools::Modification::all_tri(**_hole_ptrs[hole_i]);
       }
+      hole_mesh_2d[hole_i] = false;
     }
     else if (*hole_elem_dims.begin() == 2)
     {
@@ -211,6 +213,7 @@ XYZDelaunayGenerator::generate()
         paramError("holes", "2D hole meshes cannot be stitched.");
       if (hole_elem_types.size() != 1 || *hole_elem_types.begin() != ElemType::TRI3)
         MeshTools::Modification::all_tri(**_hole_ptrs[hole_i]);
+      hole_mesh_2d[hole_i] = true;
     }
     else
       paramError("holes", "All elements in a hole mesh must be either 2D or 3D.");
