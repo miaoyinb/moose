@@ -436,4 +436,12 @@ void createSubdomainFromSidesets(std::unique_ptr<MeshBase> & mesh,
                                  const SubdomainName new_subdomain_name,
                                  const std::string type_name);
 
+/**
+ * 
+ */
+void
+convertBlockToMesh(std::unique_ptr<MeshBase> & source_mesh,
+                   std::unique_ptr<MeshBase> & target_mesh,
+                   const std::vector<SubdomainName> & target_blocks);
+
 }

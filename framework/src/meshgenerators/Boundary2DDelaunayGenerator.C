@@ -66,21 +66,137 @@ Boundary2DDelaunayGenerator::Boundary2DDelaunayGenerator(const InputParameters &
 std::unique_ptr<MeshBase>
 Boundary2DDelaunayGenerator::generate()
 {
-  std::unique_ptr<MeshBase> mesh = std::move(_input);
+  std::unique_ptr<MeshBase> mesh_3d = std::move(_input);
 
-  // Generate a new block id if one isn't supplied.
-  SubdomainID new_block_id = MooseMeshUtils::getNextFreeSubdomainID(*mesh);
+  // Generate a new 2D block based on the sidesets
+  const auto new_block_id = MooseMeshUtils::getNextFreeSubdomainID(*mesh_3d);
   try
   {
     MooseMeshUtils::createSubdomainFromSidesets(
-        mesh, _boundary_names, new_block_id, SubdomainName(), type());
+        mesh_3d, _boundary_names, new_block_id, SubdomainName(), type());
   }
   catch (MooseException & e)
   {
     paramError("sidesets", e.what());
   }
 
-  return mesh;
+  // Create a 2D mesh form the 2D block
+  auto mesh_2d = buildMeshBaseObject();
+  MooseMeshUtils::convertBlockToMesh(mesh_3d, mesh_2d, {std::to_string(new_block_id)});
+  // We do not need the 3D mesh anymore
+  mesh_3d->clear();
+
+  // Find the external boundary of the 2D mesh, we prepare the mesh here as it is needed later
+  mesh_2d->prepare_for_use();
+  const auto mesh_2d_ext_bdry = MooseMeshUtils::getNextFreeBoundaryID(*mesh_2d);
+  for (const auto & elem : mesh_2d->active_element_ptr_range())
+    for (const auto & i_side : elem->side_index_range())
+      if (elem->neighbor_ptr(i_side) == nullptr)
+        mesh_2d->get_boundary_info().add_side(elem, i_side, mesh_2d_ext_bdry);
+
+  // Create a clone of the 2D mesh to be used for the 1D mesh generation
+  auto mesh_2d_dummy = dynamic_pointer_cast<MeshBase>(mesh_2d->clone());
+  // Generate a new 1D block based on the external boundary
+  const auto new_block_id_1d = MooseMeshUtils::getNextFreeSubdomainID(*mesh_2d_dummy);
+
+  MooseMeshUtils::createSubdomainFromSidesets(
+      mesh_2d_dummy, {std::to_string(mesh_2d_ext_bdry)}, new_block_id_1d, SubdomainName(), type());
+
+  // Create a 1D mesh form the 1D block
+  auto mesh_1d = buildMeshBaseObject();
+  MooseMeshUtils::convertBlockToMesh(mesh_2d_dummy, mesh_1d, {std::to_string(new_block_id_1d)});
+  mesh_2d_dummy->clear();
+
+  // Find centroid of the 2D mesh
+  const Point centroid = MooseMeshUtils::meshCentroidCalculator(*mesh_2d);
+  // calculate an average normal vector of the 2D mesh
+  const Point mesh_norm = meshNormal2D(*mesh_2d);
+
+  // Move both 2d and 1d meshes to the centroid of the 2D mesh
+  MeshTools::Modification::translate(*mesh_1d, -centroid(0), -centroid(1), -centroid(2));
+  MeshTools::Modification::translate(*mesh_2d, -centroid(0), -centroid(1), -centroid(2));
+
+  // Calculate the Euler angles to rotate the meshes so that the 2D mesh is close to the XY plane
+  // (i.e., the normal vector of the 2D mesh is aligned with the Z axis)
+  const Real theta = std::acos(mesh_norm(2)) / M_PI * 180.0;
+  const Real phi =
+      (MooseUtils::absoluteFuzzyLessThan(mesh_norm(2), 1.0) ? std::atan2(mesh_norm(1), mesh_norm(0))
+                                                            : 0.0) /
+      M_PI * 180.0;
+  MeshTools::Modification::rotate(*mesh_1d, 90.0 - phi, theta, 0.0);
+  MeshTools::Modification::rotate(*mesh_2d, 90.0 - phi, theta, 0.0);
+
+  // Clone the 2D mesh to be used for reverse projection later
+  auto mesh_2d_xyz = dynamic_pointer_cast<MeshBase>(mesh_2d->clone());
+
+  // Project the 2D mesh to the XY plane so that XYDelaunay can be used
+  for (const auto & node : mesh_2d->node_ptr_range())
+    (*node)(2) = 0;
+  // Project the 1D mesh to the XY plane as well
+  for (const auto & node : mesh_1d->node_ptr_range())
+    (*node)(2) = 0;
+
+  // Finally, triangulation
+  std::unique_ptr<UnstructuredMesh> mesh =
+      dynamic_pointer_cast<UnstructuredMesh>(std::move(mesh_1d));
+
+  Poly2TriTriangulator poly2tri(*mesh);
+  poly2tri.triangulation_type() = TriangulatorInterface::PSLG;
+
+  poly2tri.set_interpolate_boundary_points(0);
+  poly2tri.set_refine_boundary_allowed(false);
+  poly2tri.set_verify_hole_boundaries(false);
+  poly2tri.desired_area() = 0;
+  poly2tri.minimum_angle() = 0; // Not yet supported
+  poly2tri.smooth_after_generating() = false;
+  if (_use_auto_area_func)
+    poly2tri.set_auto_area_function(this->comm(),
+                                    _auto_area_function_num_points,
+                                    _auto_area_function_power,
+                                    _auto_area_func_default_size,
+                                    _auto_area_func_default_size_dist);
+  poly2tri.triangulate();
+
+  // Reverse the projection based on the original 2D mesh
+  for (const auto & node : mesh->node_ptr_range())
+  {
+    bool node_mod = false;
+    // Try to find the element in mesh_2d that contains the new node
+    for (const auto & elem : mesh_2d->active_element_ptr_range())
+    {
+      if (elem->contains_point(Point((*node)(0), (*node)(1), 0.0)))
+      {
+        // Element id
+        const auto elem_id = elem->id();
+        // element in xyz_in_xyz
+        const Elem & elem_xyz = *mesh_2d_xyz->elem_ptr(elem_id);
+
+        const Point elem_normal = elemNormal(elem_xyz);
+        const Point & elem_p = *mesh_2d_xyz->elem_ptr(elem_id)->node_ptr(0);
+
+        // if the x and y values of the node is the same as the elem_p's first node, we can just
+        // move it to that node's position
+        if (MooseUtils::absoluteFuzzyEqual((*node)(0), elem_p(0)) &&
+            MooseUtils::absoluteFuzzyEqual((*node)(1), elem_p(1)))
+        {
+          (*node)(2) = elem_p(2);
+          node_mod = true;
+          break;
+        }
+        // Otherwise, we need to find a position inside the 2D element
+        // It has the same x and y coordinates as the node in the projected mesh;
+        (*node)(2) = elem_p(2) - (((*node)(0) - elem_p(0)) * elem_normal(0) +
+                                  ((*node)(1) - elem_p(1)) * elem_normal(1)) /
+                                     elem_normal(2);
+        node_mod = true;
+        break;
+      }
+    }
+    if (!node_mod)
+      mooseError("Node not found in mesh_in_xy");
+  }
+
+  return std::move(mesh);
 }
 
 Point
@@ -91,4 +207,24 @@ Boundary2DDelaunayGenerator::elemNormal(const Elem & elem)
   const Point & p2 = *elem.node_ptr(2);
 
   return ((p2 - p1).cross(p0 - p1)).unit();
+}
+
+Point
+Boundary2DDelaunayGenerator::meshNormal2D(const MeshBase & mesh)
+{
+  Point mesh_norm = Point(0.0, 0.0, 0.0);
+  Real mesh_area = 0.0;
+
+  // Check all the elements' normal vectors
+  for (const auto & elem :
+       as_range(mesh.active_local_elements_begin(), mesh.active_local_elements_end()))
+  {
+    const Real elem_area = elem->volume();
+    mesh_norm += elemNormal(*elem) * elem_area;
+    mesh_area += elem_area;
+  }
+  mesh.comm().sum(mesh_norm);
+  mesh.comm().sum(mesh_area);
+  mesh_norm /= mesh_area;
+  return mesh_norm.unit();
 }

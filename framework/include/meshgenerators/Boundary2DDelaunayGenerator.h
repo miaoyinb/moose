@@ -46,4 +46,9 @@ protected:
    *
    */
   Point elemNormal(const Elem & elem);
+
+  /**
+   * 
+   */
+  Point meshNormal2D(const MeshBase & mesh);
 };
