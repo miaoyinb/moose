@@ -21,6 +21,7 @@ InputParameters
 Boundary2DDelaunayGenerator::validParams()
 {
   InputParameters params = MeshGenerator::validParams();
+  params += FunctionParserUtils<false>::validParams();
 
   params.addClassDescription("Mesh generator which removes side sets");
   params.addRequiredParam<MeshGeneratorName>("input", "The mesh we want to modify");
@@ -47,20 +48,49 @@ Boundary2DDelaunayGenerator::validParams()
       "auto_area_function_power>0",
       "Polynomial power of the inverse distance interpolation algorithm for automatic area "
       "function calculation.");
+  params.addParam<std::string>(
+      "level_set",
+      "Level set used to achieve more accurate reverse projection compared to interpoliation.");
+  params.addParam<unsigned int>(
+      "max_level_set_correction_iterations",
+      3,
+      "Maximum number of iterations to correct the nodes based on the level set function.");
 
   return params;
 }
 
 Boundary2DDelaunayGenerator::Boundary2DDelaunayGenerator(const InputParameters & parameters)
   : MeshGenerator(parameters),
+    FunctionParserUtils<false>(parameters),
     _input(getMesh("input")),
     _boundary_names(getParam<std::vector<BoundaryName>>("boundary_names")),
     _use_auto_area_func(getParam<bool>("use_auto_area_func")),
     _auto_area_func_default_size(getParam<Real>("auto_area_func_default_size")),
     _auto_area_func_default_size_dist(getParam<Real>("auto_area_func_default_size_dist")),
     _auto_area_function_num_points(getParam<unsigned int>("auto_area_function_num_points")),
-    _auto_area_function_power(getParam<Real>("auto_area_function_power"))
+    _auto_area_function_power(getParam<Real>("auto_area_function_power")),
+    _max_level_set_correction_iterations(
+        getParam<unsigned int>("max_level_set_correction_iterations"))
 {
+  if (isParamValid("level_set"))
+  {
+    _func_level_set = std::make_shared<SymFunction>();
+    // set FParser internal feature flags
+    setParserFeatureFlags(_func_level_set);
+    if (isParamValid("constant_names") && isParamValid("constant_expressions"))
+      addFParserConstants(_func_level_set,
+                          getParam<std::vector<std::string>>("constant_names"),
+                          getParam<std::vector<std::string>>("constant_expressions"));
+    if (_func_level_set->Parse(getParam<std::string>("level_set"), "x,y,z") >= 0)
+      mooseError("Invalid function f(x,y,z)\n",
+                 _func_level_set,
+                 "\nin CutMeshByLevelSetGenerator ",
+                 name(),
+                 ".\n",
+                 _func_level_set->ErrorMsg());
+
+    _func_params.resize(3);
+  }
 }
 
 std::unique_ptr<MeshBase>
@@ -86,8 +116,25 @@ Boundary2DDelaunayGenerator::generate()
   // We do not need the 3D mesh anymore
   mesh_3d->clear();
 
-  // Find the external boundary of the 2D mesh, we prepare the mesh here as it is needed later
+  // If a level set is provided, we need to check if the nodes in the original 2D mesh match the
+  // level set
+  if (_func_level_set)
+  {
+    for (const auto & node : mesh_2d->node_ptr_range())
+    {
+      if (std::abs(levelSetEvaluator(*node)) > libMesh::TOLERANCE)
+      {
+        paramError("level_set",
+                   "The level set function does not match the nodes in the given boundary of the "
+                   "input mesh.");
+      }
+    }
+  }
+
+  // Easier to work with a TRI3 mesh
+  // all_tri() also prepares the mesh for use
   mesh_2d->prepare_for_use();
+  MeshTools::Modification::all_tri(*mesh_2d);
   const auto mesh_2d_ext_bdry = MooseMeshUtils::getNextFreeBoundaryID(*mesh_2d);
   for (const auto & elem : mesh_2d->active_element_ptr_range())
     for (const auto & i_side : elem->side_index_range())
@@ -196,6 +243,26 @@ Boundary2DDelaunayGenerator::generate()
       mooseError("Node not found in mesh_in_xy");
   }
 
+  // Rotate the mesh back
+  MeshTools::Modification::rotate(*mesh, 0.0, -theta, phi - 90.0);
+  // Translate the mesh back
+  MeshTools::Modification::translate(*mesh, centroid(0), centroid(1), centroid(2));
+
+  // Correct the nodes based on the level set function
+  if (_func_level_set)
+  {
+    for (const auto & node : mesh->node_ptr_range())
+    {
+      unsigned int iter_ct = 0;
+      while (iter_ct < _max_level_set_correction_iterations &&
+             std::abs(levelSetEvaluator(*node)) > libMesh::TOLERANCE * libMesh::TOLERANCE)
+      {
+        levelSetCorrection(*node);
+        ++iter_ct;
+      }
+    }
+  }
+
   return std::move(mesh);
 }
 
@@ -227,4 +294,33 @@ Boundary2DDelaunayGenerator::meshNormal2D(const MeshBase & mesh)
   mesh.comm().sum(mesh_area);
   mesh_norm /= mesh_area;
   return mesh_norm.unit();
+}
+
+Real
+Boundary2DDelaunayGenerator::levelSetEvaluator(const Point & point)
+{
+  _func_params[0] = point(0);
+  _func_params[1] = point(1);
+  _func_params[2] = point(2);
+  return evaluate(_func_level_set);
+}
+
+void
+Boundary2DDelaunayGenerator::levelSetCorrection(Node & node)
+{
+  const Real diff = libMesh::TOLERANCE * 10.0; // A small value to perturb the node
+  const Real original_eval = levelSetEvaluator(node);
+  const Real xp_eval = levelSetEvaluator(node + Point(diff, 0.0, 0.0));
+  const Real yp_eval = levelSetEvaluator(node + Point(0.0, diff, 0.0));
+  const Real zp_eval = levelSetEvaluator(node + Point(0.0, 0.0, diff));
+  const Real xm_eval = levelSetEvaluator(node - Point(diff, 0.0, 0.0));
+  const Real ym_eval = levelSetEvaluator(node - Point(0.0, diff, 0.0));
+  const Real zm_eval = levelSetEvaluator(node - Point(0.0, 0.0, diff));
+  const Point grad = Point((xp_eval - xm_eval) / (2.0 * diff),
+                           (yp_eval - ym_eval) / (2.0 * diff),
+                           (zp_eval - zm_eval) / (2.0 * diff));
+  const Real xyz_diff = -original_eval / grad.contract(grad);
+  node(0) += xyz_diff * grad(0);
+  node(1) += xyz_diff * grad(1);
+  node(2) += xyz_diff * grad(2);
 }

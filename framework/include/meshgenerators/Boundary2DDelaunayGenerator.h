@@ -10,10 +10,11 @@
 #pragma once
 
 #include "MeshGenerator.h"
+#include "FunctionParserUtils.h"
 
 #include "libmesh/meshfree_interpolation.h"
 
-class Boundary2DDelaunayGenerator : public MeshGenerator
+class Boundary2DDelaunayGenerator : public MeshGenerator, public FunctionParserUtils<false>
 {
 public:
   static InputParameters validParams();
@@ -42,13 +43,28 @@ protected:
   /// Power of the polynomial used in the inverse distance interpolation for automatic area function
   const Real _auto_area_function_power;
 
+  /// Maximum number of iterations to correct the nodes based on the level set function
+  const unsigned int _max_level_set_correction_iterations;
+
+  /// function parser object describing the level set
+  SymFunctionPtr _func_level_set;
+
   /**
    *
    */
   Point elemNormal(const Elem & elem);
 
   /**
-   * 
+   *
    */
   Point meshNormal2D(const MeshBase & mesh);
+
+  /**
+   * Evaluate the level set function at a given point.
+   * @param point The point at which the level set function is to be evaluated
+   * @return the value of the level set function at the given point
+   */
+  Real levelSetEvaluator(const Point & point);
+
+  void levelSetCorrection(Node & node);
 };
