@@ -55,6 +55,11 @@ Boundary2DDelaunayGenerator::validParams()
       "max_level_set_correction_iterations",
       3,
       "Maximum number of iterations to correct the nodes based on the level set function.");
+  params.addRangeCheckedParam<Real>(
+      "max_angle_deviation",
+      60.0,
+      "max_angle_deviation>0 & max_angle_deviation<90",
+      "Maximum angle deviation from the global average normal vector in the input mesh.");
 
   return params;
 }
@@ -70,7 +75,8 @@ Boundary2DDelaunayGenerator::Boundary2DDelaunayGenerator(const InputParameters &
     _auto_area_function_num_points(getParam<unsigned int>("auto_area_function_num_points")),
     _auto_area_function_power(getParam<Real>("auto_area_function_power")),
     _max_level_set_correction_iterations(
-        getParam<unsigned int>("max_level_set_correction_iterations"))
+        getParam<unsigned int>("max_level_set_correction_iterations")),
+    _max_angle_deviation(getParam<Real>("max_angle_deviation"))
 {
   if (isParamValid("level_set"))
   {
@@ -158,6 +164,12 @@ Boundary2DDelaunayGenerator::generate()
   const Point centroid = MooseMeshUtils::meshCentroidCalculator(*mesh_2d);
   // calculate an average normal vector of the 2D mesh
   const Point mesh_norm = meshNormal2D(*mesh_2d);
+  // Check the deviation of the mesh normal vector from the global average normal vector
+  if (meshNormalDeviation2D(*mesh_2d, mesh_norm) > _max_angle_deviation)
+    paramError("boundary_names",
+               "The average normal vector of the 2D mesh deviates too much from the global "
+               "average normal vector. Consider dividing the boundary into several parts to "
+               "reduce the angle deviation.");
 
   // Move both 2d and 1d meshes to the centroid of the 2D mesh
   MeshTools::Modification::translate(*mesh_1d, -centroid(0), -centroid(1), -centroid(2));
@@ -294,6 +306,21 @@ Boundary2DDelaunayGenerator::meshNormal2D(const MeshBase & mesh)
   mesh.comm().sum(mesh_area);
   mesh_norm /= mesh_area;
   return mesh_norm.unit();
+}
+
+Real
+Boundary2DDelaunayGenerator::meshNormalDeviation2D(const MeshBase & mesh, const Point & global_norm)
+{
+  Real max_deviation(0.0);
+  // Check all the elements' deviation from the global normal vector
+  for (const auto & elem :
+       as_range(mesh.active_local_elements_begin(), mesh.active_local_elements_end()))
+  {
+    const Real elem_deviation = std::acos(global_norm * elemNormal(*elem)) / M_PI * 180.0;
+    max_deviation = std::max(max_deviation, elem_deviation);
+  }
+  mesh.comm().sum(max_deviation);
+  return max_deviation;
 }
 
 Real

@@ -46,6 +46,9 @@ protected:
   /// Maximum number of iterations to correct the nodes based on the level set function
   const unsigned int _max_level_set_correction_iterations;
 
+  /// Max angle deviation from the global average normal vector in the input mesh
+  const Real _max_angle_deviation;
+
   /// function parser object describing the level set
   SymFunctionPtr _func_level_set;
 
@@ -58,6 +61,11 @@ protected:
    *
    */
   Point meshNormal2D(const MeshBase & mesh);
+
+  /**
+   *
+   */
+  Real meshNormalDeviation2D(const MeshBase & mesh, const Point & global_norm);
 
   /**
    * Evaluate the level set function at a given point.
