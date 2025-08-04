@@ -29,6 +29,8 @@ protected:
   std::unique_ptr<MeshBase> & _input;
   ///The boundaries to be converted
   const std::vector<BoundaryName> _boundary_names;
+  /// Number of layers of elements to be converted
+  const unsigned int _conversion_element_layer_number;
   /// Whether to check if the provided boundaries are external
   const bool _external_boundaries_checking;
   /// The base subdomain ID to shift the original elements because of the element type change
