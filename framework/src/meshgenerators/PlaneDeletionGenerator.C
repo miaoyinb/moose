@@ -26,13 +26,23 @@ PlaneDeletionGenerator::validParams()
   params.addRequiredParam<Point>("point", "The point that defines the plane");
   params.addRequiredParam<RealVectorValue>("normal", "The normal that defines the plane");
 
+  MooseEnum delete_criterion("CENTROID VERTEX_AVG ONE_VERTEX ALL_VERTICES", "VERTEX_AVG");
+  params.addParam<MooseEnum>("deletion_criterion",
+                             delete_criterion,
+                             "The criterion for deleting elements. "
+                             "CENTROID: delete if the centroid is above the plane; "
+                             "ONE_VERTEX: delete if at least one vertex is above the plane; "
+                             "ALL_VERTICES: delete if all vertices are above the plane.");
   return params;
 }
 
 PlaneDeletionGenerator::PlaneDeletionGenerator(const InputParameters & parameters)
   : ElementDeletionGeneratorBase(parameters),
+    _deletion_criterion(
+        getParam<MooseEnum>("deletion_criterion").template getEnum<DeletionCriterion>()),
     _point(getParam<Point>("point")),
     _normal(getParam<RealVectorValue>("normal"))
+
 {
   if (!_normal.norm())
     paramError("normal", "Normal vector must have a size!");
@@ -44,18 +54,61 @@ PlaneDeletionGenerator::PlaneDeletionGenerator(const InputParameters & parameter
 bool
 PlaneDeletionGenerator::shouldDelete(const Elem * elem)
 {
-  auto centroid = elem->vertex_average();
+  std::vector<Point> vecs_from_plane_point;
 
-  auto vec_from_plane_point = centroid - _point;
+  switch (_deletion_criterion)
+  {
+    case DeletionCriterion::CENTROID:
+      vecs_from_plane_point.push_back(elem->true_centroid() - _point);
+      break;
+    case DeletionCriterion::VERTEX_AVG:
+      vecs_from_plane_point.push_back(elem->vertex_average() - _point);
+      break;
+    case DeletionCriterion::ONE_VERTEX:
+    case DeletionCriterion::ALL_VERTICES:
+      for (const auto & i_vertex : make_range(elem->n_vertices()))
+        vecs_from_plane_point.push_back(*elem->node_ptr(i_vertex) - _point);
+      break;
+    default:
+      mooseAssert(false, "Unknown deletion criterion");
+  }
 
-  auto norm = vec_from_plane_point.norm();
+  if (vecs_from_plane_point.size() == 1)
+  {
+    auto norm = vecs_from_plane_point.front().norm();
 
-  // If we _perfectly_ hit a centroid... default to deleting the element
-  if (!norm)
-    return true;
+    // If we _perfectly_ hit a centroid... default to deleting the element
+    if (!norm)
+      return true;
 
-  // Unitize it
-  vec_from_plane_point /= norm;
+    // Unitize it
+    vecs_from_plane_point.front() /= norm;
 
-  return vec_from_plane_point * _normal > 0;
+    return vecs_from_plane_point.front() * _normal > 0;
+  }
+  else
+  {
+    std::vector<Real> dot_products(vecs_from_plane_point.size());
+    bool should_delete = _deletion_criterion == DeletionCriterion::ONE_VERTEX ? false : true;
+    for (const auto & i_vec : make_range(vecs_from_plane_point.size()))
+    {
+      auto norm = vecs_from_plane_point[i_vec].norm();
+      if (!norm)
+        dot_products[i_vec] = 0.0;
+      else
+      {
+        vecs_from_plane_point[i_vec] /= norm;
+        dot_products[i_vec] = vecs_from_plane_point[i_vec] * _normal;
+      }
+
+      if (_deletion_criterion == DeletionCriterion::ONE_VERTEX)
+      {
+        if (MooseUtils::absoluteFuzzyGreaterThan(dot_products[i_vec], 0))
+          return true; // At least one vertex is above the plane
+      }
+      else if (MooseUtils::absoluteFuzzyLessThan(dot_products[i_vec], 0))
+        return false; // At least one vertex is below the plane
+    }
+    return should_delete;
+  }
 }

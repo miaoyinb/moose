@@ -27,6 +27,14 @@ public:
   PlaneDeletionGenerator(const InputParameters & parameters);
 
 protected:
+  /// Criterion for deleting elements
+  const enum class DeletionCriterion {
+    CENTROID,
+    VERTEX_AVG,
+    ONE_VERTEX,
+    ALL_VERTICES
+  } _deletion_criterion;
+
   virtual bool shouldDelete(const Elem * elem) override;
 
 private:

@@ -1,13 +1,36 @@
 [Tests]
-  [./test]
+  design = 'PlaneDeletionGenerator.md'
+  issues = '#13046'
+  requirement = "The system shall provide a method for deleting mesh elements lying on one side of a user-defined plane"
+  [test_vertex_avg]
     type = 'Exodiff'
     input = 'plane_deletion.i'
     exodiff = 'plane_deletion_in.e'
     cli_args = '--mesh-only'
     recover = false
 
-    requirement = "The system shall provide a method for deleting mesh elements lying on one side of a user-defined plane."
-    design = 'PlaneDeletionGenerator.md'
-    issues = '#13046'
-  [../]
+    detail = "based on the vertex average of the involved elements."
+  []
+  [test_all_vertices]
+    type = 'Exodiff'
+    input = 'plane_deletion.i'
+    exodiff = 'plane_deletion_all_vertices_in.e'
+    cli_args = '--mesh-only plane_deletion_all_vertices_in.e
+                Mesh/deleter/point="0.7 0.5 0"
+                Mesh/deleter/deletion_criterion="ALL_VERTICES"'
+    recover = false
+
+    detail = "based on all the vertices of the involved elements."
+  []
+  [test_one_vertex]
+    type = 'Exodiff'
+    input = 'plane_deletion.i'
+    exodiff = 'plane_deletion_one_vertex_in.e'
+    cli_args = '--mesh-only plane_deletion_one_vertex_in.e
+                Mesh/deleter/point="0.7 0.5 0"
+                Mesh/deleter/deletion_criterion="ONE_VERTEX"'
+    recover = false
+
+    detail = "based on any one of the vertices of the involved elements."
+  []
 []
