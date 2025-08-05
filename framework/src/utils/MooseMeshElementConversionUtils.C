@@ -20,6 +20,7 @@
 #include "libmesh/utility.h"
 #include "libmesh/cell_tet4.h"
 #include "libmesh/face_tri3.h"
+#include "libmesh/cell_pyramid5.h"
 
 using namespace libMesh;
 
@@ -678,6 +679,329 @@ elementBoundaryInfoCollector(const std::vector<libMesh::BoundaryInfo::BCTuple> &
        ++selected_bdry_side)
   {
     elem_side_list[std::get<1>(*selected_bdry_side)].push_back(std::get<2>(*selected_bdry_side));
+  }
+}
+
+void
+convertElem(ReplicatedMesh & mesh,
+            const dof_id_type & elem_id,
+            const std::vector<unsigned int> & side_indices,
+            const std::vector<std::vector<boundary_id_type>> & elem_side_info,
+            const SubdomainID & subdomain_id_shift_base)
+{
+  const auto & elem_type = mesh.elem_ptr(elem_id)->type();
+  switch (elem_type)
+  {
+    case HEX8:
+      convertHex8Elem(mesh, elem_id, side_indices, elem_side_info, subdomain_id_shift_base);
+      break;
+    case PRISM6:
+      convertPrism6Elem(mesh, elem_id, side_indices, elem_side_info, subdomain_id_shift_base);
+      break;
+    case PYRAMID5:
+      convertPyramid5Elem(mesh, elem_id, elem_side_info, subdomain_id_shift_base);
+      break;
+    default:
+      mooseAssert(false,
+                  "The provided element type '" + Moose::toString(elem_type) +
+                      "' is not supported and is not supposed to be passed to this function. "
+                      "Only HEX8, PRISM6 and PYRAMID5 are supported.");
+  }
+}
+
+void
+convertHex8Elem(ReplicatedMesh & mesh,
+                const dof_id_type & elem_id,
+                const std::vector<unsigned int> & side_indices,
+                const std::vector<std::vector<boundary_id_type>> & elem_side_info,
+                const SubdomainID & subdomain_id_shift_base)
+{
+  // We add a node at the centroid of the HEX8 element
+  // With this node, the HEX8 can be converted into 6 PYRAMID5 elements
+  // For the PYRAMID5 element, it can further be converted into 2 TET3 elements
+  const Point elem_cent = mesh.elem_ptr(elem_id)->true_centroid();
+  auto new_node = mesh.add_point(elem_cent);
+  for (const auto & i_side : make_range(mesh.elem_ptr(elem_id)->n_sides()))
+  {
+    if (std::find(side_indices.begin(), side_indices.end(), i_side) != side_indices.end())
+      createUnitTet4FromHex8(
+          mesh, elem_id, i_side, new_node, elem_side_info[i_side], subdomain_id_shift_base);
+    else
+      createUnitPyramid5FromHex8(
+          mesh, elem_id, i_side, new_node, elem_side_info[i_side], subdomain_id_shift_base);
+  }
+}
+
+void
+createUnitPyramid5FromHex8(ReplicatedMesh & mesh,
+                           const dof_id_type & elem_id,
+                           const unsigned int & side_index,
+                           const Node * new_node,
+                           const std::vector<boundary_id_type> & side_info,
+                           const SubdomainID & subdomain_id_shift_base)
+{
+  auto new_elem = std::make_unique<Pyramid5>();
+  new_elem->set_node(0, mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(3));
+  new_elem->set_node(1, mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(2));
+  new_elem->set_node(2, mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(1));
+  new_elem->set_node(3, mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(0));
+  new_elem->set_node(4, const_cast<Node *>(new_node));
+  new_elem->subdomain_id() = mesh.elem_ptr(elem_id)->subdomain_id() + subdomain_id_shift_base * 2;
+  auto new_elem_ptr = mesh.add_elem(std::move(new_elem));
+  retainEEID(mesh, elem_id, new_elem_ptr);
+  for (const auto & bid : side_info)
+    mesh.get_boundary_info().add_side(new_elem_ptr, 4, bid);
+}
+
+void
+createUnitTet4FromHex8(ReplicatedMesh & mesh,
+                       const dof_id_type & elem_id,
+                       const unsigned int & side_index,
+                       const Node * new_node,
+                       const std::vector<boundary_id_type> & side_info,
+                       const SubdomainID & subdomain_id_shift_base)
+{
+  // We want to make sure that the QUAD4 is divided by the diagonal that involves the node with
+  // the lowest node id This may help maintain consistency for future applications
+  unsigned int lid_index = 0;
+  for (const auto & i : make_range(1, 4))
+  {
+    if (mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(i)->id() <
+        mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(lid_index)->id())
+      lid_index = i;
+  }
+
+  auto new_elem_0 = std::make_unique<Tet4>();
+  new_elem_0->set_node(0,
+                       mesh.elem_ptr(elem_id)
+                           ->side_ptr(side_index)
+                           ->node_ptr(MathUtils::euclideanMod(2 - lid_index % 2, 4)));
+  new_elem_0->set_node(1,
+                       mesh.elem_ptr(elem_id)
+                           ->side_ptr(side_index)
+                           ->node_ptr(MathUtils::euclideanMod(1 - lid_index % 2, 4)));
+  new_elem_0->set_node(2,
+                       mesh.elem_ptr(elem_id)
+                           ->side_ptr(side_index)
+                           ->node_ptr(MathUtils::euclideanMod(0 - lid_index % 2, 4)));
+  new_elem_0->set_node(3, const_cast<Node *>(new_node));
+  new_elem_0->subdomain_id() = mesh.elem_ptr(elem_id)->subdomain_id() + subdomain_id_shift_base;
+  auto new_elem_ptr_0 = mesh.add_elem(std::move(new_elem_0));
+  retainEEID(mesh, elem_id, new_elem_ptr_0);
+
+  auto new_elem_1 = std::make_unique<Tet4>();
+  new_elem_1->set_node(0,
+                       mesh.elem_ptr(elem_id)
+                           ->side_ptr(side_index)
+                           ->node_ptr(MathUtils::euclideanMod(3 - lid_index % 2, 4)));
+  new_elem_1->set_node(1,
+                       mesh.elem_ptr(elem_id)
+                           ->side_ptr(side_index)
+                           ->node_ptr(MathUtils::euclideanMod(2 - lid_index % 2, 4)));
+  new_elem_1->set_node(2,
+                       mesh.elem_ptr(elem_id)
+                           ->side_ptr(side_index)
+                           ->node_ptr(MathUtils::euclideanMod(0 - lid_index % 2, 4)));
+  new_elem_1->set_node(3, const_cast<Node *>(new_node));
+  new_elem_1->subdomain_id() = mesh.elem_ptr(elem_id)->subdomain_id() + subdomain_id_shift_base;
+  auto new_elem_ptr_1 = mesh.add_elem(std::move(new_elem_1));
+  retainEEID(mesh, elem_id, new_elem_ptr_1);
+
+  for (const auto & bid : side_info)
+  {
+    mesh.get_boundary_info().add_side(new_elem_ptr_0, 0, bid);
+    mesh.get_boundary_info().add_side(new_elem_ptr_1, 0, bid);
+  }
+}
+
+void
+convertPrism6Elem(ReplicatedMesh & mesh,
+                  const dof_id_type & elem_id,
+                  const std::vector<unsigned int> & side_indices,
+                  const std::vector<std::vector<boundary_id_type>> & elem_side_info,
+                  const SubdomainID & subdomain_id_shift_base)
+{
+  // We add a node at the centroid of the PRISM6 element
+  // With this node, the PRISM6 can be converted into 3 PYRAMID5 elements and 2 TET4 elements
+  // For the PYRAMID5 element, it can further be converted into 2 TET3 elements
+  const Point elem_cent = mesh.elem_ptr(elem_id)->true_centroid();
+  auto new_node = mesh.add_point(elem_cent);
+  for (const auto & i_side : make_range(mesh.elem_ptr(elem_id)->n_sides()))
+  {
+    if (i_side % 4 == 0 ||
+        std::find(side_indices.begin(), side_indices.end(), i_side) != side_indices.end())
+      createUnitTet4FromPrism6(
+          mesh, elem_id, i_side, new_node, elem_side_info[i_side], subdomain_id_shift_base);
+    else
+      createUnitPyramid5FromPrism6(
+          mesh, elem_id, i_side, new_node, elem_side_info[i_side], subdomain_id_shift_base);
+  }
+}
+
+void
+createUnitTet4FromPrism6(ReplicatedMesh & mesh,
+                         const dof_id_type & elem_id,
+                         const unsigned int & side_index,
+                         const Node * new_node,
+                         const std::vector<boundary_id_type> & side_info,
+                         const SubdomainID & subdomain_id_shift_base)
+{
+  // For side 1 and side 4, they are already TRI3, so only one TET is created
+  // For side 0, 2, and 3, they are QUAD4, so we create 2 TETs
+  // We want to make sure that the QUAD4 is divided by the diagonal that involves
+  // the node with the lowest node id This may help maintain consistency for future applications
+  bool is_side_quad = (side_index % 4 != 0);
+  unsigned int lid_index = 0;
+  if (is_side_quad)
+    for (const auto & i : make_range(1, 4))
+    {
+      if (mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(i)->id() <
+          mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(lid_index)->id())
+        lid_index = i;
+    }
+  // For a TRI3 side, lid_index is always 0, so the indices are always 2,1,0 here
+  auto new_elem_0 = std::make_unique<Tet4>();
+  new_elem_0->set_node(0,
+                       mesh.elem_ptr(elem_id)
+                           ->side_ptr(side_index)
+                           ->node_ptr(MathUtils::euclideanMod(2 - lid_index % 2, 4)));
+  new_elem_0->set_node(1,
+                       mesh.elem_ptr(elem_id)
+                           ->side_ptr(side_index)
+                           ->node_ptr(MathUtils::euclideanMod(1 - lid_index % 2, 4)));
+  new_elem_0->set_node(2,
+                       mesh.elem_ptr(elem_id)
+                           ->side_ptr(side_index)
+                           ->node_ptr(MathUtils::euclideanMod(0 - lid_index % 2, 4)));
+  new_elem_0->set_node(3, const_cast<Node *>(new_node));
+  new_elem_0->subdomain_id() = mesh.elem_ptr(elem_id)->subdomain_id() + subdomain_id_shift_base;
+  auto new_elem_ptr_0 = mesh.add_elem(std::move(new_elem_0));
+  retainEEID(mesh, elem_id, new_elem_ptr_0);
+
+  Elem * new_elem_ptr_1 = nullptr;
+  if (is_side_quad)
+  {
+    auto new_elem_1 = std::make_unique<Tet4>();
+    new_elem_1->set_node(0,
+                         mesh.elem_ptr(elem_id)
+                             ->side_ptr(side_index)
+                             ->node_ptr(MathUtils::euclideanMod(3 - lid_index % 2, 4)));
+    new_elem_1->set_node(1,
+                         mesh.elem_ptr(elem_id)
+                             ->side_ptr(side_index)
+                             ->node_ptr(MathUtils::euclideanMod(2 - lid_index % 2, 4)));
+    new_elem_1->set_node(2,
+                         mesh.elem_ptr(elem_id)
+                             ->side_ptr(side_index)
+                             ->node_ptr(MathUtils::euclideanMod(0 - lid_index % 2, 4)));
+    new_elem_1->set_node(3, const_cast<Node *>(new_node));
+    new_elem_1->subdomain_id() = mesh.elem_ptr(elem_id)->subdomain_id() + subdomain_id_shift_base;
+    new_elem_ptr_1 = mesh.add_elem(std::move(new_elem_1));
+    retainEEID(mesh, elem_id, new_elem_ptr_1);
+  }
+
+  for (const auto & bid : side_info)
+  {
+    mesh.get_boundary_info().add_side(new_elem_ptr_0, 0, bid);
+    if (new_elem_ptr_1)
+      mesh.get_boundary_info().add_side(new_elem_ptr_1, 0, bid);
+  }
+}
+
+void
+createUnitPyramid5FromPrism6(ReplicatedMesh & mesh,
+                             const dof_id_type & elem_id,
+                             const unsigned int & side_index,
+                             const Node * new_node,
+                             const std::vector<boundary_id_type> & side_info,
+                             const SubdomainID & subdomain_id_shift_base)
+{
+  // Same as Hex8
+  auto new_elem = std::make_unique<Pyramid5>();
+  new_elem->set_node(0, mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(3));
+  new_elem->set_node(1, mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(2));
+  new_elem->set_node(2, mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(1));
+  new_elem->set_node(3, mesh.elem_ptr(elem_id)->side_ptr(side_index)->node_ptr(0));
+  new_elem->set_node(4, const_cast<Node *>(new_node));
+  new_elem->subdomain_id() = mesh.elem_ptr(elem_id)->subdomain_id() + subdomain_id_shift_base * 2;
+  auto new_elem_ptr = mesh.add_elem(std::move(new_elem));
+  retainEEID(mesh, elem_id, new_elem_ptr);
+  for (const auto & bid : side_info)
+    mesh.get_boundary_info().add_side(new_elem_ptr, 4, bid);
+}
+
+void
+convertPyramid5Elem(ReplicatedMesh & mesh,
+                    const dof_id_type & elem_id,
+                    const std::vector<std::vector<boundary_id_type>> & elem_side_info,
+                    const SubdomainID & subdomain_id_shift_base)
+{
+  // A Pyramid5 element has only one QUAD4 face, so we can convert it to 2 TET4 elements
+  unsigned int lid_index = 0;
+  for (const auto & i : make_range(1, 4))
+  {
+    if (mesh.elem_ptr(elem_id)->side_ptr(4)->node_ptr(i)->id() <
+        mesh.elem_ptr(elem_id)->side_ptr(4)->node_ptr(lid_index)->id())
+      lid_index = i;
+  }
+  auto new_elem_0 = std::make_unique<Tet4>();
+  new_elem_0->set_node(
+      0,
+      mesh.elem_ptr(elem_id)->side_ptr(4)->node_ptr(MathUtils::euclideanMod(2 - lid_index % 2, 4)));
+  new_elem_0->set_node(
+      1,
+      mesh.elem_ptr(elem_id)->side_ptr(4)->node_ptr(MathUtils::euclideanMod(1 - lid_index % 2, 4)));
+  new_elem_0->set_node(
+      2,
+      mesh.elem_ptr(elem_id)->side_ptr(4)->node_ptr(MathUtils::euclideanMod(0 - lid_index % 2, 4)));
+  new_elem_0->set_node(3, mesh.elem_ptr(elem_id)->node_ptr(4));
+  new_elem_0->subdomain_id() = mesh.elem_ptr(elem_id)->subdomain_id() + subdomain_id_shift_base;
+  auto new_elem_ptr_0 = mesh.add_elem(std::move(new_elem_0));
+  retainEEID(mesh, elem_id, new_elem_ptr_0);
+
+  auto new_elem_1 = std::make_unique<Tet4>();
+  new_elem_1->set_node(
+      0,
+      mesh.elem_ptr(elem_id)->side_ptr(4)->node_ptr(MathUtils::euclideanMod(3 - lid_index % 2, 4)));
+  new_elem_1->set_node(
+      1,
+      mesh.elem_ptr(elem_id)->side_ptr(4)->node_ptr(MathUtils::euclideanMod(2 - lid_index % 2, 4)));
+  new_elem_1->set_node(
+      2,
+      mesh.elem_ptr(elem_id)->side_ptr(4)->node_ptr(MathUtils::euclideanMod(0 - lid_index % 2, 4)));
+  new_elem_1->set_node(3, mesh.elem_ptr(elem_id)->node_ptr(4));
+  new_elem_1->subdomain_id() = mesh.elem_ptr(elem_id)->subdomain_id() + subdomain_id_shift_base;
+  auto new_elem_ptr_1 = mesh.add_elem(std::move(new_elem_1));
+  retainEEID(mesh, elem_id, new_elem_ptr_1);
+
+  for (const auto & bid : elem_side_info[0])
+    mesh.get_boundary_info().add_side(new_elem_ptr_0, 2 - lid_index % 2, bid);
+  for (const auto & bid : elem_side_info[1])
+    if (lid_index % 2)
+      mesh.get_boundary_info().add_side(new_elem_ptr_1, 2, bid);
+    else
+      mesh.get_boundary_info().add_side(new_elem_ptr_0, 1, bid);
+  for (const auto & bid : elem_side_info[2])
+    mesh.get_boundary_info().add_side(new_elem_ptr_1, 2 + lid_index % 2, bid);
+  for (const auto & bid : elem_side_info[3])
+    if (lid_index % 2)
+      mesh.get_boundary_info().add_side(new_elem_ptr_0, 1, bid);
+    else
+      mesh.get_boundary_info().add_side(new_elem_ptr_1, 3, bid);
+  for (const auto & bid : elem_side_info[4])
+  {
+    mesh.get_boundary_info().add_side(new_elem_ptr_0, 0, bid);
+    mesh.get_boundary_info().add_side(new_elem_ptr_1, 0, bid);
+  }
+}
+
+void
+retainEEID(ReplicatedMesh & mesh, const dof_id_type & elem_id, Elem * new_elem_ptr)
+{
+  const unsigned int n_eeid = mesh.n_elem_integers();
+  for (const auto & i : make_range(n_eeid))
+  {
+    new_elem_ptr->set_extra_integer(i, mesh.elem_ptr(elem_id)->get_extra_integer(i));
   }
 }
 }
