@@ -33,6 +33,4 @@ protected:
   const unsigned int _conversion_element_layer_number;
   /// Whether to check if the provided boundaries are external
   const bool _external_boundaries_checking;
-  /// The base subdomain ID to shift the original elements because of the element type change
-  SubdomainID _sid_shift_base;
 };

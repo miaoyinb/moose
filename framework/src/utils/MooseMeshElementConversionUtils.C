@@ -693,12 +693,17 @@ convertElem(ReplicatedMesh & mesh,
   switch (elem_type)
   {
     case HEX8:
+      // HEX8 to PYRAMID5 (+2*subdomain_id_shift_base)
+      // HEX8 to TET4 (+subdomain_id_shift_base)
       convertHex8Elem(mesh, elem_id, side_indices, elem_side_info, subdomain_id_shift_base);
       break;
     case PRISM6:
+      // PRISM6 to TET4 (+subdomain_id_shift_base)
+      // PRISM6 to PYRAMID5 (+2*subdomain_id_shift_base)
       convertPrism6Elem(mesh, elem_id, side_indices, elem_side_info, subdomain_id_shift_base);
       break;
     case PYRAMID5:
+      // PYRAMID5 to TET4 (+subdomain_id_shift_base)
       convertPyramid5Elem(mesh, elem_id, elem_side_info, subdomain_id_shift_base);
       break;
     default:
@@ -1003,5 +1008,182 @@ retainEEID(ReplicatedMesh & mesh, const dof_id_type & elem_id, Elem * new_elem_p
   {
     new_elem_ptr->set_extra_integer(i, mesh.elem_ptr(elem_id)->get_extra_integer(i));
   }
+}
+
+void
+transitionLayerGenerator(ReplicatedMesh & mesh,
+                         const std::vector<BoundaryName> & boundary_names,
+                         const unsigned int & conversion_element_layer_number,
+                         const bool & external_boundaries_checking)
+{
+  // The base subdomain ID to shift the original elements because of the element type change
+  const auto sid_shift_base = MooseMeshUtils::getNextFreeSubdomainID(mesh);
+
+  // It would be convenient to have a single boundary id instead of a vector.
+  const auto uniform_tmp_bid = MooseMeshUtils::getNextFreeBoundaryID(mesh);
+
+  // Check the boundaries and merge them
+  std::vector<boundary_id_type> boundary_ids;
+  for (const auto & sideset : boundary_names)
+  {
+    if (!MooseMeshUtils::hasBoundaryName(mesh, sideset))
+      throw MooseException("The provided boundary '", sideset, "' was not found within the mesh");
+    boundary_ids.push_back(MooseMeshUtils::getBoundaryID(sideset, mesh));
+    MooseMeshUtils::changeBoundaryId(mesh, boundary_ids.back(), uniform_tmp_bid, false);
+  }
+
+  auto & sideset_map = mesh.get_boundary_info().get_sideset_map();
+  auto side_list = mesh.get_boundary_info().build_side_list();
+
+  std::vector<std::pair<dof_id_type, std::vector<unsigned int>>> elems_list;
+  std::vector<std::set<dof_id_type>> layered_elems_list;
+  layered_elems_list.push_back(std::set<dof_id_type>());
+  // Need to collect the list of elements that need to be converted
+  if (external_boundaries_checking && !mesh.is_prepared())
+    mesh.find_neighbors();
+  for (const auto & side_info : side_list)
+  {
+    if (std::get<2>(side_info) == uniform_tmp_bid)
+    {
+      // Check if the involved side is TRI3 or QUAD4
+      // We do not limit the element type in the input mesh
+      // As long as the involved boundaries only consist of TRI3 and QUAD4 sides,
+      // this generator will work
+      // As the side element of a quadratic element is still a linear element in libMesh,
+      // we need to check the element's default_side_order() first
+      if (mesh.elem_ptr(std::get<0>(side_info))->default_side_order() != 1)
+        throw MooseException(
+            "The provided boundary set contains non-linear side elements, which is not supported.");
+      const auto side_type =
+          mesh.elem_ptr(std::get<0>(side_info))->side_ptr(std::get<1>(side_info))->type();
+      layered_elems_list.back().emplace(std::get<0>(side_info));
+      if (conversion_element_layer_number == 1)
+      {
+        if (side_type == TRI3)
+          continue; // Already TRI3, no need to convert
+        else if (side_type == QUAD4)
+        {
+          if (elems_list.size() && elems_list.back().first == std::get<0>(side_info))
+            elems_list.back().second.push_back(std::get<1>(side_info));
+          else
+            elems_list.push_back(std::make_pair(
+                std::get<0>(side_info), std::vector<unsigned int>({std::get<1>(side_info)})));
+        }
+      }
+      else
+        mooseAssert(false,
+                    "Impossible scenario: a linear side element that is neither TRI3 nor QUAD4.");
+      if (external_boundaries_checking)
+        if (mesh.elem_ptr(std::get<0>(side_info))->neighbor_ptr(std::get<1>(side_info)))
+          throw MooseException(
+              "The provided boundary contains non-external sides, which is required when "
+              "external_boundaries_checking is enabled.");
+    }
+  }
+
+  if (conversion_element_layer_number > 1)
+  {
+    std::set<dof_id_type> total_elems_set(layered_elems_list.back());
+
+    while (layered_elems_list.back().size() &&
+           layered_elems_list.size() < conversion_element_layer_number)
+    {
+      layered_elems_list.push_back(std::set<dof_id_type>());
+      for (const auto & elem_id : *(layered_elems_list.end() - 2))
+      {
+        for (const auto & i_side : make_range(mesh.elem_ptr(elem_id)->n_sides()))
+        {
+          if (mesh.elem_ptr(elem_id)->neighbor_ptr(i_side) != nullptr)
+          {
+            const auto & neighbor_id = mesh.elem_ptr(elem_id)->neighbor_ptr(i_side)->id();
+            if (total_elems_set.find(neighbor_id) == total_elems_set.end())
+            {
+              layered_elems_list.back().emplace(neighbor_id);
+              total_elems_set.emplace(neighbor_id);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Remove the last empty layer
+  if (layered_elems_list.back().empty())
+    layered_elems_list.pop_back();
+
+  if (conversion_element_layer_number > layered_elems_list.size())
+    throw MooseException("There is fewer layers of elements in the input mesh than the requested "
+                         "number of layers to convert.");
+
+  std::vector<std::pair<dof_id_type, bool>> original_elems;
+  // construct a list of the element to convert to tet4
+  // Convert at most n_layer_conversion layers of elements
+  const unsigned int n_layer_conversion = layered_elems_list.size() - 1;
+  for (unsigned int i = 0; i < n_layer_conversion; ++i)
+    for (const auto & elem_id : layered_elems_list[i])
+    {
+      // As these elements will become TET4 elements, we need to shift the subdomain ID
+      // But we do not need to convert original TET4 elements
+      if (mesh.elem_ptr(elem_id)->type() != TET4)
+      {
+        original_elems.push_back(std::make_pair(elem_id, false));
+        mesh.elem_ptr(elem_id)->subdomain_id() += sid_shift_base;
+      }
+    }
+
+  const subdomain_id_type block_id_to_remove = sid_shift_base * 3;
+
+  std::vector<dof_id_type> converted_elems_ids_to_track;
+  MooseMeshElementConversionUtils::convert3DMeshToAllTet4(
+      mesh, original_elems, converted_elems_ids_to_track, block_id_to_remove, false);
+
+  // Now we need to convert the elements on the transition layer
+  // First, we need to identify that the sides that are on the interface with previous layer (all
+  // TET layers)
+  if (n_layer_conversion)
+  {
+    for (const auto & elem_id : layered_elems_list[n_layer_conversion])
+    {
+      for (const auto & i_side : make_range(mesh.elem_ptr(elem_id)->n_sides()))
+      {
+        if (mesh.elem_ptr(elem_id)->neighbor_ptr(i_side) != nullptr &&
+            layered_elems_list[n_layer_conversion - 1].count(
+                mesh.elem_ptr(elem_id)->neighbor_ptr(i_side)->id()))
+        {
+          if (elems_list.size() && elems_list.back().first == elem_id)
+            elems_list.back().second.push_back(i_side);
+          else
+            elems_list.push_back(std::make_pair(elem_id, std::vector<unsigned int>({i_side})));
+        }
+      }
+    }
+  }
+
+  // Now convert the elements
+  for (const auto & elem_info : elems_list)
+  {
+    // Find the involved sidesets of the element so that we can retain them
+    std::vector<std::vector<boundary_id_type>> elem_side_info(
+        mesh.elem_ptr(elem_info.first)->n_sides());
+    auto side_range = sideset_map.equal_range(mesh.elem_ptr(elem_info.first));
+    for (auto i = side_range.first; i != side_range.second; ++i)
+      elem_side_info[i->second.first].push_back(i->second.second);
+
+    MooseMeshElementConversionUtils::convertElem(
+        mesh, elem_info.first, elem_info.second, elem_side_info, sid_shift_base);
+  }
+
+  // delete the original elements that were converted
+  for (const auto & elem_info : elems_list)
+    mesh.elem_ptr(elem_info.first)->subdomain_id() = block_id_to_remove;
+  for (auto elem_it = mesh.active_subdomain_elements_begin(block_id_to_remove);
+       elem_it != mesh.active_subdomain_elements_end(block_id_to_remove);
+       elem_it++)
+    mesh.delete_elem(*elem_it);
+  // delete temporary boundary id
+  mesh.get_boundary_info().remove_id(uniform_tmp_bid);
+
+  mesh.contract();
+  mesh.set_isnt_prepared();
 }
 }

@@ -10,7 +10,7 @@ Using this mesh generator, a 3D structured mesh defined by a bounding box (e.g.,
 
 ## Methods
 
-`CutMeshByLevelSetGenerator` first converts all elements of the input mesh into `TET4` elements. Next, the `TET4` elements sliced by the level set are further split into `TET4` elements. This mesh generator uses exact the same algorithm as its sibling mesh generator, [`CutMeshByPlaneGenerator`](/CutMeshByPlaneGenerator.md). At the first-order element level, cutting by a plane and cutting by a level set are the same.
+`CutMeshByLevelSetGenerator` first either converts all elements of the input mesh into `TET4` elements, or converts the elements crossed by the level set into `TET4` elements along with a transition layer that consists of `TET4` and `PYRAMID5` elements. Next, the `TET4` elements sliced by the level set are further split into `TET4` elements. This mesh generator uses exact the same algorithm as its sibling mesh generator, [`CutMeshByPlaneGenerator`](/CutMeshByPlaneGenerator.md). At the first-order element level, cutting by a plane and cutting by a level set are the same.
 
 ## Example Syntax
 

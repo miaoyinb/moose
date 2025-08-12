@@ -200,7 +200,7 @@ pyramidNodesToTetNodesDeterminer(std::vector<const Node *> & pyramid_nodes,
  * @param mesh The mesh to be converted
  * @param elems_to_process A vector of pairs of element ids and a bool indicating whether the
  * element needs to be fully retained or will be further processed in the following procedures
- * @param converted_elems_ids_to_track A vector of element ids that need to be tracked for beig
+ * @param converted_elems_ids_to_track A vector of element ids that need to be tracked for being
  * further processed in the following procedures
  * @param block_id_to_remove The id of a new subdomain in the mesh containing all the elements to be
  * removed
@@ -356,4 +356,19 @@ void convertPyramid5Elem(ReplicatedMesh & mesh,
  * @param new_elem_ptr The pointer to the new element that will retain the extra integer
  */
 void retainEEID(ReplicatedMesh & mesh, const dof_id_type & elem_id, Elem * new_elem_ptr);
+
+/**
+ * Generate a transition layer of elements with TRI3 surfaces on the given boundaries.
+ * @param mesh The mesh to be modified
+ * @param boundary_names A vector of boundary names on which the transition layer will be
+ * generated
+ * @param conversion_element_layer_number The number of element layers to be converted on the given
+ * boundaries.
+ * @param external_boundaries_checking Whether to check if the provided boundaries are external
+ * boundaries
+ */
+void transitionLayerGenerator(ReplicatedMesh & mesh,
+                              const std::vector<BoundaryName> & boundary_names,
+                              const unsigned int & conversion_element_layer_number,
+                              const bool & external_boundaries_checking);
 }
