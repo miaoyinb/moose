@@ -872,4 +872,58 @@ convertBlockToMesh(std::unique_ptr<MeshBase> & source_mesh,
     }
   }
 }
+
+void
+buildPolyLineMesh(MeshBase & mesh,
+                  const std::vector<Point> & points,
+                  const bool loop,
+                  const BoundaryName & start_boundary,
+                  const BoundaryName & end_boundary,
+                  const unsigned int num_edges_between_points)
+{
+  const auto n_points = points.size();
+  for (auto i : make_range(n_points))
+  {
+    Point p = points[i];
+    mesh.add_point(p, i * num_edges_between_points);
+    if (num_edges_between_points > 1)
+    {
+      if (!loop && (i + 1) == n_points)
+        break;
+
+      const auto ip1 = (i + 1) % n_points;
+      const Point pvec = (points[ip1] - p) / num_edges_between_points;
+
+      for (auto j : make_range(1u, num_edges_between_points))
+      {
+        p += pvec;
+        mesh.add_point(p, i * num_edges_between_points + j);
+      }
+    }
+  }
+
+  const auto n_segments = loop ? n_points : (n_points - 1);
+  const auto n_elem = n_segments * num_edges_between_points;
+  const auto max_nodes = n_points * num_edges_between_points;
+  for (auto i : make_range(n_elem))
+  {
+    const auto ip1 = (i + 1) % max_nodes;
+    auto elem = Elem::build(EDGE2);
+    elem->set_node(0, mesh.node_ptr(i));
+    elem->set_node(1, mesh.node_ptr(ip1));
+    elem->set_id() = i;
+    mesh.add_elem(std::move(elem));
+  }
+
+  if (!loop)
+  {
+    BoundaryInfo & bi = mesh.get_boundary_info();
+    std::vector<BoundaryName> bdy_names{start_boundary, end_boundary};
+    std::vector<boundary_id_type> ids = MooseMeshUtils::getBoundaryIDs(mesh, bdy_names, true);
+    bi.add_side(mesh.elem_ptr(0), 0, ids[0]);
+    bi.add_side(mesh.elem_ptr(n_elem - 1), 1, ids[1]);
+  }
+
+  mesh.prepare_for_use();
+}
 }

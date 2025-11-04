@@ -451,4 +451,23 @@ void createSubdomainFromSidesets(std::unique_ptr<MeshBase> & mesh,
 void convertBlockToMesh(std::unique_ptr<MeshBase> & source_mesh,
                         std::unique_ptr<MeshBase> & target_mesh,
                         const std::vector<SubdomainName> & target_blocks);
+
+/**
+ * Generates meshes from edges connecting a list of points.
+ * @param mesh The mesh to be built
+ * @param points The list of points defining the polyline
+ * @param loop Whether the polyline is a closed loop
+ * @param start_boundary The boundary name to assign to the start of the polyline (if
+ * not a loop)
+ * @param end_boundary The boundary name to assign to the end of the polyline (if
+ * not a loop)
+ * @param num_edges_between_points The number of edges to create between each pair of points
+ */
+void
+buildPolyLineMesh(MeshBase & mesh,
+                  const std::vector<Point> & points,
+                  const bool loop,
+                  const BoundaryName & start_boundary,
+                  const BoundaryName & end_boundary,
+                  const unsigned int num_edges_between_points);
 }

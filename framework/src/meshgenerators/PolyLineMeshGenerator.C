@@ -63,50 +63,8 @@ PolyLineMeshGenerator::generate()
   auto uptr_mesh = buildMeshBaseObject();
   MeshBase & mesh = *uptr_mesh;
 
-  const auto n_points = _points.size();
-  for (auto i : make_range(n_points))
-  {
-    Point p = _points[i];
-    mesh.add_point(p, i * _num_edges_between_points);
-    if (_num_edges_between_points > 1)
-    {
-      if (!_loop && (i + 1) == n_points)
-        break;
-
-      const auto ip1 = (i + 1) % n_points;
-      const Point pvec = (_points[ip1] - p) / _num_edges_between_points;
-
-      for (auto j : make_range(1u, _num_edges_between_points))
-      {
-        p += pvec;
-        mesh.add_point(p, i * _num_edges_between_points + j);
-      }
-    }
-  }
-
-  const auto n_segments = _loop ? n_points : (n_points - 1);
-  const auto n_elem = n_segments * _num_edges_between_points;
-  const auto max_nodes = n_points * _num_edges_between_points;
-  for (auto i : make_range(n_elem))
-  {
-    const auto ip1 = (i + 1) % max_nodes;
-    auto elem = Elem::build(EDGE2);
-    elem->set_node(0, mesh.node_ptr(i));
-    elem->set_node(1, mesh.node_ptr(ip1));
-    elem->set_id() = i;
-    mesh.add_elem(std::move(elem));
-  }
-
-  if (!_loop)
-  {
-    BoundaryInfo & bi = mesh.get_boundary_info();
-    std::vector<BoundaryName> bdy_names{_start_boundary, _end_boundary};
-    std::vector<boundary_id_type> ids = MooseMeshUtils::getBoundaryIDs(mesh, bdy_names, true);
-    bi.add_side(mesh.elem_ptr(0), 0, ids[0]);
-    bi.add_side(mesh.elem_ptr(n_elem - 1), 1, ids[1]);
-  }
-
-  mesh.prepare_for_use();
+  MooseMeshUtils::buildPolyLineMesh(
+      mesh, _points, _loop, _start_boundary, _end_boundary, _num_edges_between_points);
 
   return uptr_mesh;
 }
