@@ -912,7 +912,13 @@ buildPolyLineMesh(MeshBase & mesh,
       for (auto j : make_range(1u, num_edges_between_points))
       {
         p += pvec;
-        mesh.add_point(p, i * num_edges_between_points + j);
+        mesh.add_point(p,
+                       nums_edges_between_points.size() == 1
+                           ? (i * num_edges_between_points)
+                           : (std::accumulate(nums_edges_between_points.begin(),
+                                              nums_edges_between_points.begin() + i,
+                                              0)) +
+                                 j);
       }
     }
   }
@@ -965,12 +971,11 @@ buildPolyLineMesh(MeshBase & mesh,
 
     const auto ip1 = (i + 1) % n_points;
     const Real length = (points[ip1] - points[i]).norm();
-    const unsigned int n_elems = std::max(static_cast<unsigned int>(std::ceil(length / max_elem_size)),
-                                          static_cast<unsigned int>(1));
+    const unsigned int n_elems = std::max(
+        static_cast<unsigned int>(std::ceil(length / max_elem_size)), static_cast<unsigned int>(1));
     nums_edges_between_points.push_back(n_elems);
   }
 
-  buildPolyLineMesh(
-      mesh, points, loop, start_boundary, end_boundary, nums_edges_between_points);
+  buildPolyLineMesh(mesh, points, loop, start_boundary, end_boundary, nums_edges_between_points);
 }
 }
