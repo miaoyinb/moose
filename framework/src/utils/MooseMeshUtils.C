@@ -879,13 +879,28 @@ buildPolyLineMesh(MeshBase & mesh,
                   const bool loop,
                   const BoundaryName & start_boundary,
                   const BoundaryName & end_boundary,
-                  const unsigned int num_edges_between_points)
+                  const std::vector<unsigned int> & nums_edges_between_points)
 {
+  mooseAssert(nums_edges_between_points.size() == 1 ||
+                  nums_edges_between_points.size() == points.size() - 1 + loop,
+              "nums_edges_between_points must be either a single value or have the same number of "
+              "entries as segments defined by the points.");
+
   const auto n_points = points.size();
   for (auto i : make_range(n_points))
   {
+    const auto & num_edges_between_points = (nums_edges_between_points.size() == 1)
+                                                ? nums_edges_between_points[0]
+                                                : nums_edges_between_points[i];
+
     Point p = points[i];
-    mesh.add_point(p, i * num_edges_between_points);
+    mesh.add_point(p,
+                   nums_edges_between_points.size() == 1
+                       ? (i * num_edges_between_points)
+                       : (std::accumulate(nums_edges_between_points.begin(),
+                                          nums_edges_between_points.begin() + i,
+                                          0)));
+
     if (num_edges_between_points > 1)
     {
       if (!loop && (i + 1) == n_points)
@@ -903,8 +918,14 @@ buildPolyLineMesh(MeshBase & mesh,
   }
 
   const auto n_segments = loop ? n_points : (n_points - 1);
-  const auto n_elem = n_segments * num_edges_between_points;
-  const auto max_nodes = n_points * num_edges_between_points;
+  const auto n_elem =
+      nums_edges_between_points.size() == 1
+          ? n_segments * nums_edges_between_points[0]
+          : std::accumulate(nums_edges_between_points.begin(), nums_edges_between_points.end(), 0);
+  const auto max_nodes =
+      nums_edges_between_points.size() == 1
+          ? n_points * nums_edges_between_points[0]
+          : std::accumulate(nums_edges_between_points.begin(), nums_edges_between_points.end(), 0);
   for (auto i : make_range(n_elem))
   {
     const auto ip1 = (i + 1) % max_nodes;
@@ -925,5 +946,31 @@ buildPolyLineMesh(MeshBase & mesh,
   }
 
   mesh.prepare_for_use();
+}
+
+void
+buildPolyLineMesh(MeshBase & mesh,
+                  const std::vector<Point> & points,
+                  const bool loop,
+                  const BoundaryName & start_boundary,
+                  const BoundaryName & end_boundary,
+                  const Real & max_elem_size)
+{
+  std::vector<unsigned int> nums_edges_between_points;
+  const auto n_points = points.size();
+  for (auto i : make_range(n_points))
+  {
+    if (!loop && (i + 1) == n_points)
+      break;
+
+    const auto ip1 = (i + 1) % n_points;
+    const Real length = (points[ip1] - points[i]).norm();
+    const unsigned int n_elems = std::max(static_cast<unsigned int>(std::ceil(length / max_elem_size)),
+                                          static_cast<unsigned int>(1));
+    nums_edges_between_points.push_back(n_elems);
+  }
+
+  buildPolyLineMesh(
+      mesh, points, loop, start_boundary, end_boundary, nums_edges_between_points);
 }
 }

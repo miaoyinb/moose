@@ -461,13 +461,31 @@ void convertBlockToMesh(std::unique_ptr<MeshBase> & source_mesh,
  * not a loop)
  * @param end_boundary The boundary name to assign to the end of the polyline (if
  * not a loop)
- * @param num_edges_between_points The number of edges to create between each pair of points
+ * @param nums_edges_between_points The numbers of edges to create between each pair of points
+ *  (if only one number is given, it is used for all point pairs)
  */
-void
-buildPolyLineMesh(MeshBase & mesh,
-                  const std::vector<Point> & points,
-                  const bool loop,
-                  const BoundaryName & start_boundary,
-                  const BoundaryName & end_boundary,
-                  const unsigned int num_edges_between_points);
+void buildPolyLineMesh(MeshBase & mesh,
+                       const std::vector<Point> & points,
+                       const bool loop,
+                       const BoundaryName & start_boundary,
+                       const BoundaryName & end_boundary,
+                       const std::vector<unsigned int> & nums_edges_between_points);
+
+/**
+ * Generates meshes from edges connecting a list of points.
+ * @param mesh The mesh to be built
+ * @param points The list of points defining the polyline
+ * @param loop Whether the polyline is a closed loop
+ * @param start_boundary The boundary name to assign to the start of the polyline (if
+ * not a loop)
+ * @param end_boundary The boundary name to assign to the end of the polyline (if
+ * not a loop)
+ * @param max_elem_size The maximum element size for the mesh
+ */
+void buildPolyLineMesh(MeshBase & mesh,
+                       const std::vector<Point> & points,
+                       const bool loop,
+                       const BoundaryName & start_boundary,
+                       const BoundaryName & end_boundary,
+                       const Real & max_elem_size);
 }

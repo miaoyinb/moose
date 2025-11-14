@@ -35,6 +35,8 @@ GapMeshGenerator::validParams()
 
   params.addRequiredParam<Real>("thickness", "The thickness of the gap to be created.");
 
+  params.addParam<Real>("max_elem_size", "The maximum element size for the generated gap mesh.");
+
   params.addClassDescription("Create a gap mesh for an 2D XY input mesh.");
 
   return params;
@@ -68,7 +70,7 @@ GapMeshGenerator::generate()
 
   auto ply_mesh = buildMeshBaseObject();
 
-  MooseMeshUtils::buildPolyLineMesh(*ply_mesh, reduced_pts_list, true, "dummy", "dummy", 1);
+  MooseMeshUtils::buildPolyLineMesh(*ply_mesh, reduced_pts_list, true, "dummy", "dummy", {1});
 
   std::unique_ptr<UnstructuredMesh> ply_mesh_u =
       dynamic_pointer_cast<UnstructuredMesh>(std::move(ply_mesh));
@@ -115,14 +117,18 @@ GapMeshGenerator::generate()
                              (normal_vecs.front().norm() * normal_vecs.back().norm())) /
                   2.0);
     // Do we need fuzzy here?
-    for (auto & rpt: reduced_pts_list)
+    for (auto & rpt : reduced_pts_list)
       if (rpt == original_pt)
         rpt = original_pt + move_dir * mov_dist;
   }
 
   auto ply_mesh_2 = buildMeshBaseObject();
 
-  MooseMeshUtils::buildPolyLineMesh(*ply_mesh_2, reduced_pts_list, true, "dummy", "dummy", 1);
+  if (isParamValid("max_elem_size"))
+    MooseMeshUtils::buildPolyLineMesh(
+        *ply_mesh_2, reduced_pts_list, true, "dummy", "dummy", getParam<Real>("max_elem_size"));
+  else
+    MooseMeshUtils::buildPolyLineMesh(*ply_mesh_2, reduced_pts_list, true, "dummy", "dummy", {1});
 
   return ply_mesh_2;
 }
