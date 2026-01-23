@@ -71,4 +71,10 @@ protected:
 
   /// Desired interior node locations
   std::vector<Point> _interior_points;
+
+  /// The thickness of the boundary layer to be created
+  const Real _boundary_layer_thickness;
+
+  /// The number of layers in the boundary layer to create
+  const unsigned int _boundary_layer_num_layers;
 };

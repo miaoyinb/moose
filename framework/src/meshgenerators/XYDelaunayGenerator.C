@@ -12,6 +12,7 @@
 #include "CastUniquePointer.h"
 #include "MooseMeshUtils.h"
 #include "MooseUtils.h"
+#include "GeometryUtils.h"
 
 #include "libmesh/elem.h"
 #include "libmesh/enum_to_string.h"
@@ -99,6 +100,14 @@ XYDelaunayGenerator::validParams()
                                       "outside the surface will not be meshed.");
   params.addParam<std::vector<FileName>>(
       "interior_point_files", {}, "Text file(s) with the interior points, one per line");
+
+  params.addRangeCheckedParam<Real>(
+      "boundary_layer_thickness",
+      "boundary_layer_thickness>0",
+      "If set, a layer of elements will be added near the outer boundary with this thickness.");
+  params.addParam<unsigned int>(
+      "boundary_layer_num_layers", 0, "Number of layers in the boundary layer to create.");
+
   params.addClassDescription("Triangulates meshes within boundaries defined by input meshes.");
 
   params.addParamNamesToGroup(
@@ -126,7 +135,13 @@ XYDelaunayGenerator::XYDelaunayGenerator(const InputParameters & parameters)
     _algorithm(parameters.get<MooseEnum>("algorithm")),
     _tri_elem_type(parameters.get<MooseEnum>("tri_element_type")),
     _verbose_stitching(parameters.get<bool>("verbose_stitching")),
-    _interior_points(getParam<std::vector<Point>>("interior_points"))
+    _interior_points(getParam<std::vector<Point>>("interior_points")),
+    _boundary_layer_thickness(isParamValid("boundary_layer_thickness")
+                                  ? getParam<Real>("boundary_layer_thickness")
+                                  : 0.0),
+    _boundary_layer_num_layers(isParamValid("boundary_layer_num_layers")
+                                   ? getParam<unsigned int>("boundary_layer_num_layers")
+                                   : 0)
 {
   if ((_desired_area > 0.0 && !_desired_area_func.empty()) ||
       (_desired_area > 0.0 && _use_auto_area_func) ||
@@ -171,6 +186,11 @@ XYDelaunayGenerator::XYDelaunayGenerator(const InputParameters & parameters)
     for (const auto & d : data)
       _interior_points.push_back(d);
   }
+
+  if (_boundary_layer_thickness > 0.0 && _boundary_layer_num_layers == 0)
+    paramError("boundary_layer_num_layers",
+               "Must be greater than 0 if boundary_layer_thickness is set.");
+
   bool has_duplicates =
       std::any_of(_interior_points.begin(),
                   _interior_points.end(),
@@ -299,6 +319,58 @@ XYDelaunayGenerator::generate()
     poly2tri.elem_type() = libMesh::ElemType::TRI6;
   else if (_tri_elem_type == "TRI7")
     poly2tri.elem_type() = libMesh::ElemType::TRI7;
+
+  // We borrow the _interior_points to add key points for boundary layer generation
+  if (_boundary_layer_thickness > 0.0)
+  {
+    auto mesh_tmp = mesh->clone();
+    std::unique_ptr<UnstructuredMesh> umesh_tmp =
+        dynamic_pointer_cast<UnstructuredMesh>(std::move(mesh_tmp));
+    TriangulatorInterface::MeshedHole bdry_mh(*umesh_tmp, bdy_ids);
+    // Reduce the point list to only contain vertices
+    std::vector<Point> reduced_pts_list;
+    for (const auto i : make_range(bdry_mh.n_points()))
+    {
+      if (!geom_utils::arePointsColinear(
+              bdry_mh.point((i - 1 + bdry_mh.n_points()) % bdry_mh.n_points()),
+              bdry_mh.point(i),
+              bdry_mh.point((i + 1) % bdry_mh.n_points())))
+        reduced_pts_list.push_back(bdry_mh.point(i));
+    }
+    // Here we need a method to generate the outward normals of each external side
+    auto ply_mesh = buildMeshBaseObject();
+    MooseMeshUtils::buildPolyLineMesh(*ply_mesh,
+                                      reduced_pts_list,
+                                      /*loop*/ true,
+                                      BoundaryName(),
+                                      BoundaryName(),
+                                      std::vector<unsigned int>({1}));
+    std::unique_ptr<UnstructuredMesh> ply_mesh_u =
+        dynamic_pointer_cast<UnstructuredMesh>(std::move(ply_mesh));
+    // if(_use_auto_area_func)
+    // {
+    //   std::vector<Point> sample_pts = {Point(0,0,0)};
+    //   std::vector<Real> sample_areas;
+    //   poly2tri.calculate_auto_desired_area_samples(sample_pts, sample_areas);
+    // }
+    for (const auto & i : make_range(_boundary_layer_num_layers))
+    {
+      auto mod_reduced_pts_list = MooseMeshUtils::generateLayerPoints(
+          this,
+          ply_mesh_u,
+          reduced_pts_list,
+          /*outward*/ false,
+          _boundary_layer_thickness / (Real)_boundary_layer_num_layers * (Real)(i + 1));
+      // Add these points to the interior points to be meshed
+      for (const auto & p : mod_reduced_pts_list)
+      {
+        if (std::find(_interior_points.begin(), _interior_points.end(), p) ==
+            _interior_points.end())
+          _interior_points.push_back(p);
+      }
+    }
+  }
+
   // Add interior points before triangulating. Only points inside the boundaries
   // will be meshed.
   for (auto & point : _interior_points)

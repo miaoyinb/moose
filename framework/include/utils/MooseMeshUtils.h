@@ -507,4 +507,13 @@ void buildPolyLineMesh(MeshBase & mesh,
                        const BoundaryName & start_boundary,
                        const BoundaryName & end_boundary,
                        const Real max_elem_size);
+
+/**
+ *
+ */
+std::vector<Point> generateLayerPoints(MeshGenerator * mg,
+                                       std::unique_ptr<UnstructuredMesh> & ply_mesh_u,
+                                       const std::vector<Point> & points,
+                                       const bool outward_direction,
+                                       const Real thickness);
 }
