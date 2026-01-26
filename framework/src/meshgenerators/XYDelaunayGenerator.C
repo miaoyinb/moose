@@ -187,6 +187,10 @@ XYDelaunayGenerator::XYDelaunayGenerator(const InputParameters & parameters)
       _interior_points.push_back(d);
   }
 
+  // The original idea is to add key points of the boundary layers as interior points to let the
+  // triangulator do the rest of the work. However, the randiomness of the Delaunay triangulation may
+  // not create element boundaries aligned with the boundary layer key points.
+  // Thus, it seems necessary to mesh each boundary layer separately.
   if (_boundary_layer_thickness > 0.0 && _boundary_layer_num_layers == 0)
     paramError("boundary_layer_num_layers",
                "Must be greater than 0 if boundary_layer_thickness is set.");
@@ -347,12 +351,10 @@ XYDelaunayGenerator::generate()
                                       std::vector<unsigned int>({1}));
     std::unique_ptr<UnstructuredMesh> ply_mesh_u =
         dynamic_pointer_cast<UnstructuredMesh>(std::move(ply_mesh));
-    // if(_use_auto_area_func)
-    // {
-    //   std::vector<Point> sample_pts = {Point(0,0,0)};
-    //   std::vector<Real> sample_areas;
-    //   poly2tri.calculate_auto_desired_area_samples(sample_pts, sample_areas);
-    // }
+    bool need_boundary_layer_refinement = true;
+    // Save some time if no refinement is needed
+    if (_desired_area == 0.0)
+      need_boundary_layer_refinement = false;
     for (const auto & i : make_range(_boundary_layer_num_layers))
     {
       auto mod_reduced_pts_list = MooseMeshUtils::generateLayerPoints(
@@ -362,11 +364,23 @@ XYDelaunayGenerator::generate()
           /*outward*/ false,
           _boundary_layer_thickness / (Real)_boundary_layer_num_layers * (Real)(i + 1));
       // Add these points to the interior points to be meshed
-      for (const auto & p : mod_reduced_pts_list)
+      // Optionally, we added refinement points based on desired area options
+      for (const auto & iv : make_range(mod_reduced_pts_list.size()))
       {
-        if (std::find(_interior_points.begin(), _interior_points.end(), p) ==
-            _interior_points.end())
-          _interior_points.push_back(p);
+        const auto & p1 = mod_reduced_pts_list[iv];
+        const auto & p2 = mod_reduced_pts_list[(iv + 1) % mod_reduced_pts_list.size()];
+        const Real segment_length = (p2 - p1).norm();
+        const Real local_desired_length = need_boundary_layer_refinement
+                                              ? std::sqrt(4.0 / std::sqrt(3.0) * _desired_area)
+                                              : segment_length;
+        const unsigned int num_segments = std::max((unsigned int)1, (unsigned int)(segment_length / local_desired_length));
+        for (const auto j : make_range(num_segments))
+        {
+          const Point np = p1 + (p2 - p1) * ((Real)j / (Real)num_segments);
+          if (std::find(_interior_points.begin(), _interior_points.end(), np) ==
+              _interior_points.end())
+            _interior_points.push_back(np);
+        }
       }
     }
   }
