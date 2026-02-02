@@ -42,6 +42,10 @@ GapLineMeshGenerator::validParams()
 
   params.addParam<Real>("max_elem_size", "The maximum element size for the generated gap mesh.");
 
+  params.addParam<bool>("skip_node_reduction",
+                        false,
+                        "Whether to skip the node reduction step after generating the gap mesh.");
+
   params.addClassDescription(
       "Generates a polyline mesh that is based on an input 2D-XY mesh. The 2D-XY mesh needs to be "
       "a "
@@ -56,7 +60,8 @@ GapLineMeshGenerator::GapLineMeshGenerator(const InputParameters & parameters)
     _input(getMesh("input")),
     _thickness(getParam<Real>("thickness")),
     _gap_direction(getParam<MooseEnum>("gap_direction").template getEnum<GapDirection>()),
-    _boundary_ids(getParam<std::vector<boundary_id_type>>("boundary_ids"))
+    _boundary_ids(getParam<std::vector<boundary_id_type>>("boundary_ids")),
+    _skip_node_reduction(getParam<bool>("skip_node_reduction"))
 {
 }
 
@@ -75,7 +80,8 @@ GapLineMeshGenerator::generate()
   std::vector<Point> reduced_pts_list;
   for (const auto i : make_range(bdry_mh.n_points()))
   {
-    if (!geom_utils::arePointsColinear(
+    if (_skip_node_reduction ||
+        !geom_utils::arePointsColinear(
             bdry_mh.point((i - 1 + bdry_mh.n_points()) % bdry_mh.n_points()),
             bdry_mh.point(i),
             bdry_mh.point((i + 1) % bdry_mh.n_points())))
@@ -91,12 +97,8 @@ GapLineMeshGenerator::generate()
                                     std::vector<unsigned int>({1}));
   std::unique_ptr<UnstructuredMesh> ply_mesh_u =
       dynamic_pointer_cast<UnstructuredMesh>(std::move(ply_mesh));
-  auto mod_reduced_pts_list =
-      MooseMeshUtils::generateLayerPoints(this,
-                                          ply_mesh_u,
-                                          reduced_pts_list,
-                                          _gap_direction == GapDirection::OUTWARD,
-                                          _thickness);
+  auto mod_reduced_pts_list = MooseMeshUtils::generateLayerPoints(
+      this, ply_mesh_u, reduced_pts_list, _gap_direction == GapDirection::OUTWARD, _thickness);
 
   // MooseMeshUtils::buildPolyLineMesh(*ply_mesh,
   //                                   reduced_pts_list,

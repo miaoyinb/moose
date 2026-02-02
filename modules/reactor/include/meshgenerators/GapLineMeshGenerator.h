@@ -37,4 +37,7 @@ protected:
 
   /// The boundary IDs around which the gap will be created
   const std::vector<boundary_id_type> _boundary_ids;
+
+  /// Whether to skip the node reduction step after generating the gap mesh
+  const bool _skip_node_reduction;
 };

@@ -191,6 +191,7 @@ XYDelaunayGenerator::XYDelaunayGenerator(const InputParameters & parameters)
   // triangulator do the rest of the work. However, the randiomness of the Delaunay triangulation may
   // not create element boundaries aligned with the boundary layer key points.
   // Thus, it seems necessary to mesh each boundary layer separately.
+
   if (_boundary_layer_thickness > 0.0 && _boundary_layer_num_layers == 0)
     paramError("boundary_layer_num_layers",
                "Must be greater than 0 if boundary_layer_thickness is set.");
@@ -335,11 +336,12 @@ XYDelaunayGenerator::generate()
     std::vector<Point> reduced_pts_list;
     for (const auto i : make_range(bdry_mh.n_points()))
     {
-      if (!geom_utils::arePointsColinear(
-              bdry_mh.point((i - 1 + bdry_mh.n_points()) % bdry_mh.n_points()),
-              bdry_mh.point(i),
-              bdry_mh.point((i + 1) % bdry_mh.n_points())))
-        reduced_pts_list.push_back(bdry_mh.point(i));
+      reduced_pts_list.push_back(bdry_mh.point(i));
+      // if (!geom_utils::arePointsColinear(
+      //         bdry_mh.point((i - 1 + bdry_mh.n_points()) % bdry_mh.n_points()),
+      //         bdry_mh.point(i),
+      //         bdry_mh.point((i + 1) % bdry_mh.n_points())))
+      //   reduced_pts_list.push_back(bdry_mh.point(i));
     }
     // Here we need a method to generate the outward normals of each external side
     auto ply_mesh = buildMeshBaseObject();
