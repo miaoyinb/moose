@@ -60,7 +60,7 @@
     param_postprocessor = param_pp          # Receiver PP in sub.i
     output_postprocessor = output_pp        # ScalarVariable PP reading u in sub.i
     target_function = target_fn
-    initial_parameter = 1.0                 # Exact answer at t = 1 with dt = 1
+    initial_parameter = 1.0                 # initial guess
     delta_parameter = 1e-3
     abs_tol = 1e-10
     rel_tol = 1e-8
@@ -72,8 +72,8 @@
 
 [Executioner]
   type = Transient
-  num_steps = 200
-  dt = 0.01
+  num_steps = 5
+  dt = 1
   solve_type = NEWTON
 []
 

@@ -1,0 +1,11 @@
+[Tests]
+  design = 'TwoMultiAppNewtonIterationUserObject.md'
+  issues = '#XXXXX'
+
+  [newton_iteration]
+    type = CSVDiff
+    input = main.i
+    csvdiff = main_out.csv
+    requirement = "The system shall solve an inverse coupling problem by finding, at each time step."
+  []
+[]

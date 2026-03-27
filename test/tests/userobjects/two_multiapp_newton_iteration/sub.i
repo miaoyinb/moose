@@ -58,11 +58,11 @@
 
 [Executioner]
   type = Transient
-  num_steps = 200
-  dt = 0.01
+  num_steps = 5
+  dt = 1
   solve_type = NEWTON
 []
 
 [Outputs]
-  csv = true
+  csv = false
 []
