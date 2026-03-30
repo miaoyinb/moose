@@ -9,6 +9,7 @@
 
 #include "TwoMultiAppNewtonIterationUserObject.h"
 
+#include "Executioner.h"
 #include "FEProblemBase.h"
 #include "Factory.h"
 #include "Function.h"
@@ -144,22 +145,31 @@ TwoMultiAppNewtonIterationUserObject::execute()
     const bool ok1 = multiapp1->solveStep(_dt, _t, /*auto_advance=*/false);
     const bool ok2 = multiapp2->solveStep(_dt, _t, /*auto_advance=*/false);
 
-    if (!ok1)
-      mooseError(name(),
-                 ": '",
-                 _multiapp1_name,
-                 "' failed to converge during Newton iteration ",
-                 iter + 1,
-                 " at t = ",
-                 _t);
-    if (!ok2)
-      mooseError(name(),
-                 ": '",
-                 _multiapp2_name,
-                 "' failed to converge during Newton iteration ",
-                 iter + 1,
-                 " at t = ",
-                 _t);
+    if (!ok1 || !ok2)
+    {
+      if (!ok1)
+        mooseInfoRepeated(name(),
+                          ": '",
+                          _multiapp1_name,
+                          "' failed to converge during Newton iteration ",
+                          iter + 1,
+                          " at t = ",
+                          _t,
+                          ". Cutting timestep.");
+      if (!ok2)
+        mooseInfoRepeated(name(),
+                          ": '",
+                          _multiapp2_name,
+                          "' failed to converge during Newton iteration ",
+                          iter + 1,
+                          " at t = ",
+                          _t,
+                          ". Cutting timestep.");
+      multiapp1->restore();
+      multiapp2->restore();
+      getMooseApp().getExecutioner()->fixedPointSolve().failStep();
+      return;
+    }
 
     const Real y1 = getSubAppOutput(multiapp1);
     const Real y2 = getSubAppOutput(multiapp2);
@@ -178,12 +188,18 @@ TwoMultiAppNewtonIterationUserObject::execute()
     const Real dy_dp = (y2 - y1) / _delta_param;
 
     if (std::abs(dy_dp) < 1e-15 * (std::abs(y1) + std::abs(y2) + 1.0))
-      mooseError(name(),
-                 ": the estimated derivative df/dp = ",
-                 dy_dp,
-                 " is too small to perform a Newton update at t = ",
-                 _t,
-                 ". Consider increasing delta_parameter or checking your sub-app setup.");
+    {
+      mooseWarning(name(),
+                   ": the estimated derivative df/dp = ",
+                   dy_dp,
+                   " is too small to perform a Newton update at t = ",
+                   _t,
+                   ". Cutting timestep.");
+      multiapp1->restore();
+      multiapp2->restore();
+      getMooseApp().getExecutioner()->fixedPointSolve().failStep();
+      return;
+    }
 
     // Newton update.
     p -= residual / dy_dp;
@@ -231,11 +247,18 @@ TwoMultiAppNewtonIterationUserObject::execute()
   const bool final_ok2 = multiapp2->solveStep(_dt, _t, /*auto_advance=*/false);
 
   if (!final_ok1)
-    mooseError(
-        name(), ": '", _multiapp1_name, "' failed during the final solve at t = ", _t, ".");
+    mooseWarning(
+        name(), ": '", _multiapp1_name, "' failed during the final solve at t = ", _t, ". Cutting timestep.");
   if (!final_ok2)
-    mooseError(
-        name(), ": '", _multiapp2_name, "' failed during the final solve at t = ", _t, ".");
+    mooseWarning(
+        name(), ": '", _multiapp2_name, "' failed during the final solve at t = ", _t, ". Cutting timestep.");
+  if (!final_ok1 || !final_ok2)
+  {
+    multiapp1->restore();
+    multiapp2->restore();
+    getMooseApp().getExecutioner()->fixedPointSolve().failStep();
+    return;
+  }
 
   // Advance time: calls endStep()+postStep() exactly once per sub-app.
   // MUST come before incrementTStep() so that endStep() sets _time = t_new
