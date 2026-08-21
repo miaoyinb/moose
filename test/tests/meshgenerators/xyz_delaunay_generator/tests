@@ -145,6 +145,38 @@
       valgrind = none # see #31360
       capabilities = 'netgen'
     []
+    [quadratic_tet10]
+      type = 'Exodiff'
+      input = 'xyzdelaunay_quadratic.i'
+      cli_args = '--mesh-only xyzdelaunay_quadratic_tet10.e'
+      exodiff = 'xyzdelaunay_quadratic_tet10.e'
+      recover = false
+      detail = "producing second-order TET10 elements with curved mid-edge nodes inherited from a second-order boundary surface."
+      valgrind = none # see #31360
+      capabilities = 'netgen'
+    []
+    [quadratic_tet14]
+      type = 'Exodiff'
+      input = 'xyzdelaunay_quadratic.i'
+      cli_args = '--mesh-only xyzdelaunay_quadratic_tet14.e
+                  Mesh/triang/tet_element_type=TET14'
+      exodiff = 'xyzdelaunay_quadratic_tet14.e'
+      recover = false
+      detail = "producing complete-order TET14 elements."
+      valgrind = none # see #31360
+      capabilities = 'netgen'
+    []
+    [quadratic_tet10_raise_hole]
+      type = 'Exodiff'
+      input = 'xyzdelaunay_quadratic.i'
+      cli_args = '--mesh-only xyzdelaunay_quadratic_tet10_raise.e
+                  Mesh/hole_second/conversion_type=FIRST_ORDER'
+      exodiff = 'xyzdelaunay_quadratic_tet10_raise.e'
+      recover = false
+      detail = "stitching a first-order hole mesh into a second-order tetrahedralization after raising the hole mesh element order to match."
+      valgrind = none # see #31360
+      capabilities = 'netgen'
+    []
   []
   [errors]
     requirement = "The system shall throw an error when tetrahedralizing a triangulated boundary"
@@ -214,6 +246,17 @@
                   Mesh/final_generator=triang'
       expect_err = "3D hole meshes with non-TRI3 surface elements cannot be stitched"
       detail = "if a hole mesh to be stitched contains non-TRI3 surface elements but is not allowed to be converted"
+      valgrind = none # see #31360
+      capabilities = 'netgen'
+    []
+    [first_order_with_quadratic_stitched_hole]
+      type = RunException
+      input = 'xyzdelaunay_quadratic.i'
+      cli_args = '--mesh-only err.e
+                  Mesh/bdy_second/conversion_type=FIRST_ORDER
+                  Mesh/triang/tet_element_type=TET4'
+      expect_err = "Cannot use first order elements with stitched quadratic element holes"
+      detail = "if a quadratic hole mesh is stitched into a requested first-order tetrahedralization"
       valgrind = none # see #31360
       capabilities = 'netgen'
     []
