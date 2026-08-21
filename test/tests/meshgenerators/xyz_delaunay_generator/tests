@@ -1,6 +1,6 @@
 [Tests]
   design = 'meshgenerators/XYZDelaunayGenerator.md'
-  issues = '#28297 #29718 #30154 #31759'
+  issues = '#28297 #29718 #30154 #31759 #33589'
   [xyzdelaunay]
     requirement = "The system shall have the capability of tetrahedralizing a triangulated boundary"
     [basic_3d]
@@ -146,32 +146,31 @@
       capabilities = 'netgen'
     []
     [quadratic_tet10]
-      type = 'Exodiff'
+      type = 'CSVDiff'
       input = 'xyzdelaunay_quadratic.i'
-      cli_args = '--mesh-only xyzdelaunay_quadratic_tet10.e'
-      exodiff = 'xyzdelaunay_quadratic_tet10.e'
+      csvdiff = 'xyzdelaunay_quadratic_tet10_out.csv'
       recover = false
       detail = "producing second-order TET10 elements with curved mid-edge nodes inherited from a second-order boundary surface."
       valgrind = none # see #31360
       capabilities = 'netgen'
     []
     [quadratic_tet14]
-      type = 'Exodiff'
+      type = 'CSVDiff'
       input = 'xyzdelaunay_quadratic.i'
-      cli_args = '--mesh-only xyzdelaunay_quadratic_tet14.e
-                  Mesh/triang/tet_element_type=TET14'
-      exodiff = 'xyzdelaunay_quadratic_tet14.e'
+      cli_args = 'Mesh/triang/tet_element_type=TET14
+                  Outputs/output/file_base=xyzdelaunay_quadratic_tet14_out'
+      csvdiff = 'xyzdelaunay_quadratic_tet14_out.csv'
       recover = false
       detail = "producing complete-order TET14 elements."
       valgrind = none # see #31360
       capabilities = 'netgen'
     []
     [quadratic_tet10_raise_hole]
-      type = 'Exodiff'
+      type = 'CSVDiff'
       input = 'xyzdelaunay_quadratic.i'
-      cli_args = '--mesh-only xyzdelaunay_quadratic_tet10_raise.e
-                  Mesh/hole_second/conversion_type=FIRST_ORDER'
-      exodiff = 'xyzdelaunay_quadratic_tet10_raise.e'
+      cli_args = 'Mesh/hole_second/conversion_type=FIRST_ORDER
+                  Outputs/output/file_base=xyzdelaunay_quadratic_tet10_raise_out'
+      csvdiff = 'xyzdelaunay_quadratic_tet10_raise_out.csv'
       recover = false
       detail = "stitching a first-order hole mesh into a second-order tetrahedralization after raising the hole mesh element order to match."
       valgrind = none # see #31360

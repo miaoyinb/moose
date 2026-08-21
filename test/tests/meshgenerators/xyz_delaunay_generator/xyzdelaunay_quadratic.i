@@ -66,3 +66,34 @@
     tet_element_type = TET10
   []
 []
+
+[Executioner]
+  type = Steady
+[]
+
+[Postprocessors]
+  [volume]
+    type = VolumePostprocessor
+  []
+  # The node count is what pins down the element type here. The integrated
+  # volume cannot: TET4, TET10 and TET14 all report 1.075 on this mesh, since
+  # the boundary deformation z + 0.3*x*y*z is reproduced exactly in volume even
+  # by straight-edged tets. Node counts are 69 / 403 / 887 respectively.
+  [num_nodes]
+    type = NumNodes
+  []
+  [num_elems]
+    type = NumElements
+  []
+[]
+
+[Problem]
+  solve = false
+[]
+
+[Outputs]
+  [output]
+    type = CSV
+    file_base = 'xyzdelaunay_quadratic_tet10_out'
+  []
+[]
